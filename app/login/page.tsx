@@ -1,6 +1,6 @@
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
-
+export const runtime = 'edge';
 export default function LoginPage() {
   // ログイン処理
   const signIn = async (formData: FormData) => {
