@@ -4,13 +4,15 @@ import Stripe from 'stripe'
 
 export const runtime = 'edge';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
-  apiVersion: '2026-02-25.clover',
-})
-
-const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET as string
-
 export async function POST(req: Request) {
+
+
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
+    apiVersion: '2026-02-25.clover',
+  })
+  const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET as string
+
+
   const body = await req.text()
   const sig = req.headers.get('stripe-signature') as string
 

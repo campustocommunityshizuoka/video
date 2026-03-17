@@ -2,10 +2,7 @@ import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import Stripe from 'stripe'
 
-// Stripeの初期化
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
-  apiVersion: '2026-02-25.clover',
-})
+
 
 export default async function PricingPage() {
   const supabase = await createClient()
@@ -28,6 +25,11 @@ export default async function PricingPage() {
   const handleCheckout = async (formData: FormData) => {
     'use server'
     
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
+    apiVersion: '2026-02-25.clover',
+  })
+
+
     // ★追加：裏側（サーバー側）でも二重決済を厳重にブロックします
     const supabaseAdmin = await createClient()
     const { data: checkSub } = await supabaseAdmin

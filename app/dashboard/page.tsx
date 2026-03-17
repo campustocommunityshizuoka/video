@@ -4,9 +4,7 @@ import Link from 'next/link'
 import Stripe from 'stripe'
 
 // Stripeの初期化
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
-  apiVersion: '2026-02-25.clover',
-})
+
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -52,6 +50,11 @@ export default async function DashboardPage() {
   // ★修正：Stripeポータルへ移動する処理（直接ここでURLを発行します）
   const goToBillingPortal = async () => {
     'use server'
+
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
+    apiVersion: '2026-02-25.clover',
+  })
+
     if (!subscription) return
 
     // Stripeから顧客IDを特定
