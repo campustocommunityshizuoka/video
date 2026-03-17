@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 import Stripe from 'stripe'
 
+export const runtime = 'edge';
+
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
   apiVersion: '2026-02-25.clover',
 })

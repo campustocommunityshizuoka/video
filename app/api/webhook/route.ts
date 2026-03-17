@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/utils/supabase/server'
+import { createClient } from '@supabase/supabase-js' // ★変更: 公式の標準クライアントを使用します
 import Stripe from 'stripe'
+
+export const runtime = 'edge';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
   apiVersion: '2026-02-25.clover',
@@ -18,12 +20,17 @@ export async function POST(req: Request) {
     event = stripe.webhooks.constructEvent(body, sig, endpointSecret)
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error'
+    console.error(`Webhook Error: ${message}`)
     return NextResponse.json({ error: `Webhook Error: ${message}` }, { status: 400 })
   }
 
-  const supabase = await createClient()
+  // ★重要: 管理者権限（Service Role）でSupabaseクライアントを初期化します
+  // これにより、ログイン情報（Cookie）がないWebhookからの通信でもデータベースを操作できます
+  const supabaseAdmin = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY! // .env.local に必ず追加してください
+  )
 
-  // 1. 新規購入、2. プラン変更、3. 解約のイベントを処理
   if (
     event.type === 'checkout.session.completed' ||
     event.type === 'customer.subscription.updated' ||
@@ -51,24 +58,43 @@ export async function POST(req: Request) {
     if (event.type === 'checkout.session.completed') {
       const session = object as Stripe.Checkout.Session
       userId = session.metadata?.userId
+      console.log('新規契約: userIdをメタデータから取得 ->', userId) // ★デバッグログ
     } else {
-      // 既存の契約更新や削除の場合は、DBからstripe_subscription_idを元にユーザーを特定
-      const { data: existingSub } = await supabase
+      console.log('契約更新/解約: StripeサブスクIDでユーザーを検索 ->', stripeSubscriptionId) // ★デバッグログ
+      // ★ supabaseAdmin を使用して既存の契約からユーザーを特定
+      const { data: existingSub, error: searchError } = await supabaseAdmin
         .from('subscriptions')
         .select('user_id')
         .eq('stripe_subscription_id', stripeSubscriptionId)
         .maybeSingle()
+      
+      if (searchError) {
+        console.error('ユーザー検索エラー:', searchError.message) // ★デバッグログ
+      }
+      
       userId = existingSub?.user_id
+      console.log('検索結果のuserId ->', userId) // ★デバッグログ
     }
 
     if (userId) {
       const planId = subscriptionItem.price.id
+
+// ★ここからデバッグログを追加
+      console.log('--- プラン判定のデバッグ ---')
+      console.log('Stripeから受信したPrice ID:', planId)
+      console.log('環境変数(STANDARD)の値:', process.env.STRIPE_PRICE_ID_STANDARD)
+      console.log('環境変数(PREMIUM)の値:', process.env.STRIPE_PRICE_ID_PREMIUM)
+      console.log('----------------------------')
+      // ★ここまで
+
       let planType = 'light'
       if (planId === process.env.STRIPE_PRICE_ID_STANDARD) planType = 'standard'
       if (planId === process.env.STRIPE_PRICE_ID_PREMIUM) planType = 'premium'
 
-      // データベースの更新
-      const { error } = await supabase.from('subscriptions').upsert({
+      console.log('DBを更新します。ユーザー:', userId, 'プラン:', planType, 'ステータス:', fullSubscription.status) // ★デバッグログ
+
+      // ★ supabaseAdmin を使用してデータベースを更新
+      const { error } = await supabaseAdmin.from('subscriptions').upsert({
         user_id: userId,
         stripe_subscription_id: stripeSubscriptionId,
         plan_type: planType,
@@ -78,8 +104,12 @@ export async function POST(req: Request) {
       }, { onConflict: 'user_id' })
 
       if (error) {
-        console.error('Database Update Error:', error.message)
+        console.error('★Database Update Error:', error.message) // ★デバッグログ
+      } else {
+        console.log('★DBの更新に成功しました！') // ★デバッグログ
       }
+    } else {
+      console.log('★userIdが特定できなかったため、DB更新をスキップしました') // ★デバッグログ
     }
   }
 
