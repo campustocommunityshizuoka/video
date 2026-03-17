@@ -2,9 +2,7 @@ import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Stripe from 'stripe'
-
-// Stripeの初期化
-
+export const runtime = 'edge';
 
 export default async function DashboardPage() {
   const supabase = await createClient()

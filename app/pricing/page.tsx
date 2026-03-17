@@ -2,7 +2,7 @@ import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import Stripe from 'stripe'
 
-
+export const runtime = 'edge';
 
 export default async function PricingPage() {
   const supabase = await createClient()
