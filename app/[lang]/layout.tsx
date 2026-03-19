@@ -13,9 +13,11 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export async function generateMetadata({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }): Promise<Metadata> {
+// ★ 修正1：Promise<{ lang: string }> に変更
+export async function generateMetadata({ params }: { params: Promise<{ lang: string }> }): Promise<Metadata> {
   const { lang } = await params;
-  const dict = await getDictionary(lang);
+  // ★ ここで 'ja' | 'en' 型として扱うように指定（as 構文）
+  const dict = await getDictionary(lang as 'ja' | 'en');
   
   return {
     title: dict.metadata.title,
@@ -23,12 +25,13 @@ export async function generateMetadata({ params }: { params: Promise<{ lang: 'ja
   };
 }
 
+// ★ 修正2：Promise<{ lang: string }> に変更
 export default async function RootLayout({
   children,
   params,
 }: Readonly<{
   children: React.ReactNode;
-  params: Promise<{ lang: 'ja' | 'en' }>;
+  params: Promise<{ lang: string }>;
 }>) {
   const { lang } = await params;
   
@@ -40,3 +43,4 @@ export default async function RootLayout({
     </html>
   );
 }
+
