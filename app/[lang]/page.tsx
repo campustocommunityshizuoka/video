@@ -1,6 +1,11 @@
 import Link from 'next/link'
+import { getDictionary } from '@/utils/get-dictionary'
+import LanguageSwitcher from '@/app/components/LanguageSwitcher'
 
-export default function HomePage() {
+export default async function HomePage({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }) {
+  const { lang } = await params;
+  const dict = await getDictionary(lang);
+
   return (
     <div className="min-h-screen bg-white font-sans text-gray-900">
       
@@ -11,22 +16,24 @@ export default function HomePage() {
             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
               <span className="text-white font-bold text-xl leading-none">あ</span>
             </div>
-            <span className="text-xl font-bold tracking-tight text-gray-800">Nihongo Learning</span>
+            <span className="text-xl font-bold tracking-tight text-gray-800">{dict.home.title}</span>
           </div>
-          <nav>
+          <nav className="flex items-center">
+            <LanguageSwitcher currentLang={lang} />
             <Link 
-              href="/login" 
+              href={`/${lang}/login`} 
               className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors mr-6"
             >
-              ログイン
+              {dict.home.login}
             </Link>
             <Link 
-              href="/login" 
+              href={`/${lang}/login`} 
               className="text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md transition-colors shadow-sm"
             >
-              無料ではじめる
+              {dict.home.startFree}
             </Link>
           </nav>
+
         </div>
       </header>
 
@@ -35,26 +42,26 @@ export default function HomePage() {
         <section className="relative pt-24 pb-32 overflow-hidden bg-gradient-to-b from-blue-50 to-white">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
             <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight text-gray-900 mb-6 leading-tight">
-              あなたのペースで、<br className="hidden md:block" />
+              {dict.home.heroTitle1}<br className="hidden md:block" />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-cyan-500">
-                確実な日本語力を。
+                {dict.home.heroTitle2}
               </span>
             </h1>
             <p className="mt-4 text-xl text-gray-600 max-w-2xl mx-auto mb-10">
-              100本以上の高品質な授業動画が見放題。体系化されたカリキュラムで、日常会話からビジネス日本語まで、最短ルートでマスターしましょう。
+              {dict.home.heroDescription}
             </p>
             <div className="flex flex-col sm:flex-row justify-center gap-4">
               <Link 
-                href="/login" 
+                href={`/${lang}/login`} 
                 className="px-8 py-4 text-base font-bold text-white bg-blue-600 rounded-full hover:bg-blue-700 shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1"
               >
-                今すぐ学習をスタート
+                {dict.home.startNow}
               </Link>
               <a 
                 href="#pricing" 
                 className="px-8 py-4 text-base font-bold text-blue-700 bg-blue-100 rounded-full hover:bg-blue-200 transition-all"
               >
-                料金プランを見る
+                {dict.home.viewPricing}
               </a>
             </div>
           </div>
@@ -67,8 +74,8 @@ export default function HomePage() {
         <section className="py-20 bg-white">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-16">
-              <h2 className="text-3xl font-bold text-gray-900 mb-4">選ばれる3つの理由</h2>
-              <p className="text-gray-600">効率的に日本語を習得するための、最適な環境が整っています。</p>
+              <h2 className="text-3xl font-bold text-gray-900 mb-4">{dict.home.reasonsTitle}</h2>
+              <p className="text-gray-600">{dict.home.reasonsDesc}</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
@@ -77,8 +84,8 @@ export default function HomePage() {
                 <div className="w-14 h-14 bg-blue-100 rounded-xl flex items-center justify-center mb-6">
                   <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
                 </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-3">圧倒的な質の授業動画</h3>
-                <p className="text-gray-600">プロの日本語教師による、わかりやすい解説動画。いつでもどこでも、何度でも見返すことができます。</p>
+                <h3 className="text-xl font-bold text-gray-900 mb-3">{dict.home.feature1Title}</h3>
+                <p className="text-gray-600">{dict.home.feature1Desc}</p>
               </div>
 
               {/* 特徴2 */}
@@ -86,8 +93,8 @@ export default function HomePage() {
                 <div className="w-14 h-14 bg-cyan-100 rounded-xl flex items-center justify-center mb-6">
                   <svg className="w-8 h-8 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
                 </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-3">進捗がひと目でわかる</h3>
-                <p className="text-gray-600">セクションごとの学習達成度をパーセンテージで可視化。モチベーションを維持しながら学習を進められます。</p>
+                <h3 className="text-xl font-bold text-gray-900 mb-3">{dict.home.feature2Title}</h3>
+                <p className="text-gray-600">{dict.home.feature2Desc}</p>
               </div>
 
               {/* 特徴3 */}
@@ -95,8 +102,8 @@ export default function HomePage() {
                 <div className="w-14 h-14 bg-indigo-100 rounded-xl flex items-center justify-center mb-6">
                   <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-3">選べる柔軟な料金プラン</h3>
-                <p className="text-gray-600">あなたの学習ペースに合わせて、ライトから無制限のプレミアムまで、3つのプランをご用意しています。</p>
+                <h3 className="text-xl font-bold text-gray-900 mb-3">{dict.home.feature3Title}</h3>
+                <p className="text-gray-600">{dict.home.feature3Desc}</p>
               </div>
             </div>
           </div>
@@ -106,41 +113,41 @@ export default function HomePage() {
         <section id="pricing" className="py-20 bg-gray-50 border-t border-gray-100">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-16">
-              <h2 className="text-3xl font-bold text-gray-900 mb-4">シンプルな料金体系</h2>
-              <p className="text-gray-600">登録は無料です。まずはアカウントを作成し、あなたに合ったプランをお選びください。</p>
+              <h2 className="text-3xl font-bold text-gray-900 mb-4">{dict.home.pricingTitle}</h2>
+              <p className="text-gray-600">{dict.home.pricingDesc}</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
               {/* プラン1 */}
               <div className="bg-white rounded-2xl p-8 border border-gray-200 shadow-sm text-center">
-                <h3 className="text-lg font-medium text-gray-500 mb-2">ライト</h3>
-                <p className="text-4xl font-extrabold text-gray-900 mb-6">¥1,000<span className="text-base font-normal text-gray-500"> / 月</span></p>
+                <h3 className="text-lg font-medium text-gray-500 mb-2">{dict.home.planLight}</h3>
+                <p className="text-4xl font-extrabold text-gray-900 mb-6">¥1,000<span className="text-base font-normal text-gray-500">{dict.home.perMonth}</span></p>
                 <ul className="text-left space-y-3 mb-8 text-gray-600">
-                  <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> 月間 10本まで視聴可能</li>
-                  <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> 進捗管理機能</li>
+                  <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> {dict.home.lightFeature1}</li>
+                  <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> {dict.home.featureProgress}</li>
                 </ul>
               </div>
               
               {/* プラン2（おすすめ） */}
               <div className="bg-white rounded-2xl p-8 border-2 border-blue-500 shadow-xl text-center relative transform md:-translate-y-4">
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-blue-500 text-white px-4 py-1 rounded-full text-sm font-bold tracking-wide">一番人気</div>
-                <h3 className="text-lg font-medium text-blue-600 mb-2">スタンダード</h3>
-                <p className="text-4xl font-extrabold text-gray-900 mb-6">¥3,000<span className="text-base font-normal text-gray-500"> / 月</span></p>
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-blue-500 text-white px-4 py-1 rounded-full text-sm font-bold tracking-wide">{dict.home.mostPopular}</div>
+                <h3 className="text-lg font-medium text-blue-600 mb-2">{dict.home.planStandard}</h3>
+                <p className="text-4xl font-extrabold text-gray-900 mb-6">¥3,000<span className="text-base font-normal text-gray-500">{dict.home.perMonth}</span></p>
                 <ul className="text-left space-y-3 mb-8 text-gray-600">
-                  <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> 月間 30本まで視聴可能</li>
-                  <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> 進捗管理機能</li>
-                  <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> 全セクションへのアクセス</li>
+                  <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> {dict.home.standardFeature1}</li>
+                  <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> {dict.home.featureProgress}</li>
+                  <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> {dict.home.featureAllAccess}</li>
                 </ul>
               </div>
 
               {/* プラン3 */}
               <div className="bg-gray-900 rounded-2xl p-8 border border-gray-800 shadow-sm text-center text-white">
-                <h3 className="text-lg font-medium text-gray-400 mb-2">プレミアム</h3>
-                <p className="text-4xl font-extrabold text-white mb-6">¥5,000<span className="text-base font-normal text-gray-400"> / 月</span></p>
+                <h3 className="text-lg font-medium text-gray-400 mb-2">{dict.home.planPremium}</h3>
+                <p className="text-4xl font-extrabold text-white mb-6">¥5,000<span className="text-base font-normal text-gray-400">{dict.home.perMonth}</span></p>
                 <ul className="text-left space-y-3 mb-8 text-gray-300">
-                  <li className="flex items-center"><span className="text-blue-400 mr-2">✓</span> 動画視聴 無制限</li>
-                  <li className="flex items-center"><span className="text-blue-400 mr-2">✓</span> 進捗管理機能</li>
-                  <li className="flex items-center"><span className="text-blue-400 mr-2">✓</span> 全セクションへのアクセス</li>
+                  <li className="flex items-center"><span className="text-blue-400 mr-2">✓</span> {dict.home.premiumFeature1}</li>
+                  <li className="flex items-center"><span className="text-blue-400 mr-2">✓</span> {dict.home.featureProgress}</li>
+                  <li className="flex items-center"><span className="text-blue-400 mr-2">✓</span> {dict.home.featureAllAccess}</li>
                 </ul>
               </div>
             </div>
@@ -150,15 +157,15 @@ export default function HomePage() {
         {/* CTA（コールトゥアクション）セクション */}
         <section className="py-20 bg-blue-600 text-white text-center">
           <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h2 className="text-3xl font-bold mb-6">さあ、新しい言語の扉を開きましょう。</h2>
+            <h2 className="text-3xl font-bold mb-6">{dict.home.ctaTitle}</h2>
             <p className="text-blue-100 text-lg mb-10">
-              アカウント作成はわずか1分で完了します。
+              {dict.home.ctaDesc}
             </p>
             <Link 
-              href="/login" 
+              href={`/${lang}/login`} 
               className="inline-block px-10 py-4 text-lg font-bold text-blue-600 bg-white rounded-full hover:bg-gray-50 shadow-lg transition-colors"
             >
-              無料でアカウントを作成する
+              {dict.home.createFreeAccount}
             </Link>
           </div>
         </section>
@@ -171,10 +178,10 @@ export default function HomePage() {
             <div className="w-6 h-6 bg-gray-400 rounded-md flex items-center justify-center">
               <span className="text-white font-bold text-xs leading-none">あ</span>
             </div>
-            <span className="text-lg font-bold text-gray-600">Nihongo Learning</span>
+            <span className="text-lg font-bold text-gray-600">{dict.home.title}</span>
           </div>
           <p className="text-gray-400 text-sm">
-            © {new Date().getFullYear()} Nihongo Learning. All rights reserved.
+            © {new Date().getFullYear()} {dict.home.footerRights}
           </p>
         </div>
       </footer>

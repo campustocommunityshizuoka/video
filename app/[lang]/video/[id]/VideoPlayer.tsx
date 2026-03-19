@@ -3,7 +3,15 @@
 import { useEffect, useRef, useState } from 'react'
 import Player from '@vimeo/player'
 
-export default function VideoPlayer({ videoId, alreadyViewed }: { videoId: string, alreadyViewed: boolean }) {
+export default function VideoPlayer({ 
+  videoId, 
+  alreadyViewed,
+  textCompleted 
+}: { 
+  videoId: string, 
+  alreadyViewed: boolean,
+  textCompleted: string 
+}) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const [isRecorded, setIsRecorded] = useState(alreadyViewed)
 
@@ -45,6 +53,8 @@ export default function VideoPlayer({ videoId, alreadyViewed }: { videoId: strin
     }
   }, [videoId, isRecorded])
 
+
+
   return (
     <div className="aspect-video bg-black rounded-lg overflow-hidden shadow-lg mb-6 relative">
       <iframe 
@@ -56,12 +66,12 @@ export default function VideoPlayer({ videoId, alreadyViewed }: { videoId: strin
         allowFullScreen
       ></iframe>
       
-      {/* 80%視聴を達成した際に、ユーザーに分かりやすくバッジを表示します */}
       {isRecorded && !alreadyViewed && (
         <div className="absolute top-4 right-4 bg-green-500 text-white px-3 py-1 rounded-full text-sm font-bold shadow-md animate-bounce">
-          ✓ 視聴完了
+          {textCompleted}
         </div>
       )}
     </div>
   )
 }
+

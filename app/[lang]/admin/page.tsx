@@ -7,7 +7,8 @@ import DeleteButton from './DeleteButton'
 
 export const runtime = 'edge';
 
-export default async function AdminDashboard() {
+export default async function AdminDashboard({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }) {
+  const { lang } = await params;
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -62,7 +63,7 @@ export default async function AdminDashboard() {
             <span className="text-xs font-bold bg-red-500 text-white px-2 py-1 rounded uppercase tracking-wider mb-2 inline-block">Admin Mode</span>
             <h1 className="text-2xl font-bold text-white">運営管理ダッシュボード</h1>
           </div>
-          <Link href="/dashboard" className="px-4 py-2 text-sm text-gray-300 bg-gray-700 rounded-md hover:bg-gray-600 transition-colors">
+          <Link href={`/${lang}/dashboard`} className="px-4 py-2 text-sm text-gray-300 bg-gray-700 rounded-md hover:bg-gray-600 transition-colors">
             一般画面へ戻る
           </Link>
         </div>
