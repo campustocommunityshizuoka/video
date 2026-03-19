@@ -5,6 +5,8 @@ import Stripe from 'stripe'
 import { getDictionary } from '@/utils/get-dictionary'
 import LanguageSwitcher from '@/app/components/LanguageSwitcher'
 
+export const runtime = 'edge';
+
 type Video = { id: string; title: string; vimeo_id: string; thumbnail_url: string | null }
 
 export default async function DashboardPage({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }) {

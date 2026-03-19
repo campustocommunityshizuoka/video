@@ -5,6 +5,8 @@ import { getDictionary } from '@/utils/get-dictionary'
 import LanguageSwitcher from '@/app/components/LanguageSwitcher'
 import PasswordInput from '@/app/components/PasswordInput'
 
+export const runtime = 'edge';
+
 export default async function LoginPage({ 
   params, 
   searchParams 

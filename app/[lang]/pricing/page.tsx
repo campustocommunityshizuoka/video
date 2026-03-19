@@ -4,6 +4,8 @@ import Stripe from 'stripe'
 import { getDictionary } from '@/utils/get-dictionary'
 import LanguageSwitcher from '@/app/components/LanguageSwitcher'
 
+export const runtime = 'edge';
+
 export default async function PricingPage({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }) {
   const { lang } = await params
   const dict = await getDictionary(lang)

@@ -6,6 +6,8 @@ import FavoriteButton from './FavoriteButton'
 import { getDictionary } from '@/utils/get-dictionary'
 import LanguageSwitcher from '@/app/components/LanguageSwitcher'
 
+export const runtime = 'edge';
+
 export default async function VideoPage({ 
   params 
 }: { 

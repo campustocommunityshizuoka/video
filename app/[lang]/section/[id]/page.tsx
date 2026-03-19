@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { getDictionary } from '@/utils/get-dictionary'
 import LanguageSwitcher from '@/app/components/LanguageSwitcher'
 
+export const runtime = 'edge';
+
 export default async function SectionPage({ 
   params 
 }: { 

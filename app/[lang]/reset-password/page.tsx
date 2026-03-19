@@ -5,6 +5,8 @@ import { headers } from 'next/headers'
 import { getDictionary } from '@/utils/get-dictionary'
 import LanguageSwitcher from '@/app/components/LanguageSwitcher'
 
+export const runtime = 'edge';
+
 export default async function ResetPasswordPage({ 
   params,
   searchParams
