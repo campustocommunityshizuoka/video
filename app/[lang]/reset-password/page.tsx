@@ -4,7 +4,6 @@ import Link from 'next/link'
 import { headers } from 'next/headers'
 import { getDictionary } from '@/utils/get-dictionary'
 import LanguageSwitcher from '@/app/components/LanguageSwitcher'
-import { requestResetAction } from '@/app/actions/auth'
 
 export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
@@ -57,6 +56,9 @@ export default async function ResetPasswordPage({
         
         <label className="text-sm font-medium text-gray-700" htmlFor="email">{dict.auth.emailLabel}</label>
         <input
+          id="email"    // ← 追加（ラベルの htmlFor="email" と紐付けるため）
+          name="email"  // ← 追加（一番重要：APIへデータを送るため）
+          type="email"  // ← 追加（スマホ等のキーボード入力を最適化するため）
           className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white w-full"
           placeholder={dict.auth.emailPlaceholder}
           required

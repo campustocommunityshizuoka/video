@@ -3,8 +3,6 @@ import { redirect } from 'next/navigation'
 import { getDictionary } from '@/utils/get-dictionary'
 import LanguageSwitcher from '@/app/components/LanguageSwitcher'
 import PasswordInput from '@/app/components/PasswordInput'
-import { updatePasswordAction } from '@/app/actions/auth'
-
 
 export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
@@ -37,7 +35,7 @@ export default async function UpdatePasswordPage({
             {dict.auth.generalError}
           </div>
         )}
-        
+
         
         <label className="text-sm font-medium text-gray-700 mt-2" htmlFor="password">{dict.auth.newPasswordLabel}</label>
         <PasswordInput 

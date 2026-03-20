@@ -4,7 +4,6 @@ import Link from 'next/link'
 import { getDictionary } from '@/utils/get-dictionary'
 import LanguageSwitcher from '@/app/components/LanguageSwitcher'
 import PasswordInput from '@/app/components/PasswordInput'
-import { signUpAction } from '@/app/actions/auth'
 
 export const runtime = 'edge';
 export const dynamic = 'force-dynamic';

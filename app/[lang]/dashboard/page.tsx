@@ -4,7 +4,6 @@ import Link from 'next/link'
 import Stripe from 'stripe'
 import { getDictionary } from '@/utils/get-dictionary'
 import LanguageSwitcher from '@/app/components/LanguageSwitcher'
-import { signOutAction } from '@/app/actions/auth'
 
 export const runtime = 'edge';
 
