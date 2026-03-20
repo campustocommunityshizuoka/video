@@ -55,7 +55,14 @@ app/[lang]/update-password/page.tsx
 app/[lang]/video/[id]/FavoriteButton.tsx
 app/[lang]/video/[id]/page.tsx
 app/[lang]/video/[id]/VideoPlayer.tsx
+app/api/admin/add-video/route.ts
+app/api/admin/delete-video/route.ts
 app/api/auth/callback/route.ts
+app/api/auth/login/route.ts
+app/api/auth/reset-password/route.ts
+app/api/auth/signout/route.ts
+app/api/auth/signup/route.ts
+app/api/auth/update-password/route.ts
 app/api/favorites/route.ts
 app/api/portal/route.ts
 app/api/record-view/route.ts
@@ -103,139 +110,6 @@ export default function DeleteButton() {
     >
       削除
     </button>
-  )
-}
-</file>
-
-<file path="app/[lang]/admin/page.tsx">
-import { createClient } from '@/utils/supabase/server'
-import { createClient as createAdminClient } from '@supabase/supabase-js' // ★追加：管理者権限用クライアント
-import { redirect } from 'next/navigation'
-import { revalidatePath } from 'next/cache'
-import Link from 'next/link'
-import DeleteButton from './DeleteButton'
-
-export const runtime = 'edge';
-
-export default async function AdminDashboard({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }) {
-  const { lang } = await params;
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user || user.email !== process.env.ADMIN_EMAIL) {
-    redirect('/dashboard')
-  }
-
-  // ★修正：RLSを無視して全データを取得できる管理者用クライアントを作成
-  const supabaseAdmin = createAdminClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-
-  // 管理者用クライアントを使ってサブスクリプション情報を取得
-  const { data: subscriptions } = await supabaseAdmin.from('subscriptions').select('*')
-  const activeSubs = subscriptions?.filter(sub => sub.status === 'active') || []
-  
-  const lightCount = activeSubs.filter(sub => sub.plan_type === 'light').length
-  const standardCount = activeSubs.filter(sub => sub.plan_type === 'standard').length
-  const premiumCount = activeSubs.filter(sub => sub.plan_type === 'premium').length
-
-  const { data: videos } = await supabase.from('videos').select('*').order('created_at', { ascending: false })
-
-  const addVideo = async (formData: FormData) => {
-    'use server'
-    const title = formData.get('title') as string
-    const vimeo_id = formData.get('vimeo_id') as string
-    
-    if (!title || !vimeo_id) return
-
-    const supabaseServer = await createClient()
-    await supabaseServer.from('videos').insert({ title, vimeo_id })
-    
-    revalidatePath('/admin')
-  }
-
-  const deleteVideo = async (formData: FormData) => {
-    'use server'
-    const id = formData.get('id') as string
-    
-    const supabaseServer = await createClient()
-    await supabaseServer.from('videos').delete().eq('id', id)
-    
-    revalidatePath('/admin')
-  }
-
-  return (
-    <div className="min-h-screen bg-gray-900 text-gray-100 p-4 md:p-8 font-sans">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex justify-between items-center mb-8 bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-lg">
-          <div>
-            <span className="text-xs font-bold bg-red-500 text-white px-2 py-1 rounded uppercase tracking-wider mb-2 inline-block">Admin Mode</span>
-            <h1 className="text-2xl font-bold text-white">運営管理ダッシュボード</h1>
-          </div>
-          <Link href={`/${lang}/dashboard`} className="px-4 py-2 text-sm text-gray-300 bg-gray-700 rounded-md hover:bg-gray-600 transition-colors">
-            一般画面へ戻る
-          </Link>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="space-y-8 lg:col-span-1">
-            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
-              <h2 className="text-lg font-bold text-white mb-4 border-b border-gray-700 pb-2">現在の有料会員数</h2>
-              <div className="text-4xl font-extrabold text-blue-400 mb-6">{activeSubs.length} <span className="text-base font-normal text-gray-400">名</span></div>
-              
-              <div className="space-y-3">
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-gray-400">ライトプラン</span>
-                  <span className="font-bold text-white">{lightCount} 名</span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-blue-400">スタンダード</span>
-                  <span className="font-bold text-white">{standardCount} 名</span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-purple-400">プレミアム</span>
-                  <span className="font-bold text-white">{premiumCount} 名</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
-              <h2 className="text-lg font-bold text-white mb-4 border-b border-gray-700 pb-2">新しい動画を登録</h2>
-              <form action={addVideo} className="space-y-4">
-                <div>
-                  <label htmlFor="title" className="block text-sm font-medium text-gray-400 mb-1">セクション番号（例: 2-1）</label>
-                  <input type="text" name="title" id="title" required className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="2-1" />
-                </div>
-                <div>
-                  <label htmlFor="vimeo_id" className="block text-sm font-medium text-gray-400 mb-1">Vimeo ID（数字のみ）</label>
-                  <input type="text" name="vimeo_id" id="vimeo_id" required className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="123456789" />
-                </div>
-                <button type="submit" className="w-full py-2 bg-blue-600 text-white font-bold rounded-md hover:bg-blue-700 transition-colors mt-2">追加する</button>
-              </form>
-            </div>
-          </div>
-
-          <div className="lg:col-span-2">
-            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg h-full max-h-[800px] flex flex-col">
-              <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-2">
-                <h2 className="text-lg font-bold text-white">登録済み動画一覧</h2>
-                <span className="text-sm text-gray-400">計 {videos?.length || 0} 本</span>
-              </div>
-              <div className="overflow-y-auto pr-2 flex-grow space-y-2">
-                {videos?.map(video => (
-                  <div key={video.id} className="flex items-center justify-between bg-gray-700 p-3 rounded-lg border border-gray-600 hover:border-gray-500 transition-colors">
-                    <div><span className="text-blue-400 font-bold mr-3">{video.title}</span><span className="text-sm text-gray-400">ID: {video.vimeo_id}</span></div>
-                    <form action={deleteVideo}><input type="hidden" name="id" value={video.id} /><DeleteButton /></form>
-                  </div>
-                ))}
-                {(!videos || videos.length === 0) && <p className="text-gray-500 text-center py-8">動画が登録されていません。</p>}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
   )
 }
 </file>
@@ -374,6 +248,63 @@ export default function VideoPlayer({
 }
 </file>
 
+<file path="app/api/admin/add-video/route.ts">
+import { NextResponse } from 'next/server'
+import { createClient } from '@/utils/supabase/server'
+
+export const runtime = 'edge';
+
+export async function POST(request: Request) {
+  const formData = await request.formData()
+  const title = formData.get('title') as string
+  const vimeo_id = formData.get('vimeo_id') as string
+  const lang = formData.get('lang') as string || 'ja'
+
+  if (!title || !vimeo_id) {
+    return NextResponse.redirect(new URL(`/${lang}/admin`, request.url), 303)
+  }
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  // API側でも管理者権限を厳格にチェックします
+  if (!user || user.email !== process.env.ADMIN_EMAIL) {
+    return NextResponse.redirect(new URL(`/${lang}/dashboard`, request.url), 303)
+  }
+
+  await supabase.from('videos').insert({ title, vimeo_id })
+
+  return NextResponse.redirect(new URL(`/${lang}/admin`, request.url), 303)
+}
+</file>
+
+<file path="app/api/admin/delete-video/route.ts">
+import { NextResponse } from 'next/server'
+import { createClient } from '@/utils/supabase/server'
+
+export const runtime = 'edge';
+
+export async function POST(request: Request) {
+  const formData = await request.formData()
+  const id = formData.get('id') as string
+  const lang = formData.get('lang') as string || 'ja'
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  // こちらも管理者権限をチェックします
+  if (!user || user.email !== process.env.ADMIN_EMAIL) {
+    return NextResponse.redirect(new URL(`/${lang}/dashboard`, request.url), 303)
+  }
+
+  if (id) {
+    await supabase.from('videos').delete().eq('id', id)
+  }
+
+  return NextResponse.redirect(new URL(`/${lang}/admin`, request.url), 303)
+}
+</file>
+
 <file path="app/api/auth/callback/route.ts">
 import { NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
@@ -402,6 +333,163 @@ export async function GET(request: Request) {
 
   // エラー時はトップページへ戻します
   return NextResponse.redirect(`${origin}/?message=auth-error`)
+}
+</file>
+
+<file path="app/api/auth/login/route.ts">
+// app/api/auth/login/route.ts
+import { NextResponse } from 'next/server'
+import { createClient } from '@/utils/supabase/server'
+
+export const runtime = 'edge';
+
+export async function POST(request: Request) {
+  // 標準的なフォームデータを受け取ります
+  const formData = await request.formData()
+  const email = formData.get('email') as string
+  const password = formData.get('password') as string
+  const currentLang = formData.get('lang') as string || 'ja'
+  
+  let redirectUrl = ''
+
+  try {
+    const supabase = await createClient()
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
+
+    if (error) {
+      console.error('ログインエラー:', error.message)
+      redirectUrl = `/${currentLang}/login?message=error`
+    } else {
+      redirectUrl = `/${currentLang}/dashboard`
+    }
+  } catch (e: any) {
+    console.error('予期せぬシステムエラー:', e.message)
+    redirectUrl = `/ja/login?message=error`
+  }
+
+  // 303 (See Other) を使って、POSTリクエストから安全にリダイレクトさせます
+  return NextResponse.redirect(new URL(redirectUrl, request.url), 303)
+}
+</file>
+
+<file path="app/api/auth/reset-password/route.ts">
+import { NextResponse } from 'next/server'
+import { createClient } from '@/utils/supabase/server'
+
+export const runtime = 'edge';
+
+export async function POST(request: Request) {
+  const formData = await request.formData()
+  const email = formData.get('email') as string
+  const currentLang = formData.get('lang') as string || 'ja'
+  
+  // リクエストのURLからオリジン（ドメイン部分）を取得します
+  const origin = new URL(request.url).origin
+
+  try {
+    const supabase = await createClient()
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${origin}/api/auth/callback?next=/${currentLang}/update-password`,
+    })
+
+    if (error) {
+      console.error('メール送信エラー:', error.message)
+      if (error.message.toLowerCase().includes('rate limit')) {
+        return NextResponse.redirect(new URL(`/${currentLang}/reset-password?message=rate_limit`, request.url), 303)
+      }
+      return NextResponse.redirect(new URL(`/${currentLang}/reset-password?message=error`, request.url), 303)
+    }
+    return NextResponse.redirect(new URL(`/${currentLang}/reset-password?message=success`, request.url), 303)
+  } catch (e: any) {
+    return NextResponse.redirect(new URL(`/${currentLang}/reset-password?message=error`, request.url), 303)
+  }
+}
+</file>
+
+<file path="app/api/auth/signout/route.ts">
+import { NextResponse } from 'next/server'
+import { createClient } from '@/utils/supabase/server'
+
+export const runtime = 'edge';
+
+export async function POST(request: Request) {
+  const formData = await request.formData()
+  const currentLang = formData.get('lang') as string || 'ja'
+
+  const supabaseClient = await createClient()
+  await supabaseClient.auth.signOut()
+
+  return NextResponse.redirect(new URL(`/${currentLang}/login`, request.url), 303)
+}
+</file>
+
+<file path="app/api/auth/signup/route.ts">
+import { NextResponse } from 'next/server'
+import { createClient } from '@/utils/supabase/server'
+
+export const runtime = 'edge';
+
+export async function POST(request: Request) {
+  const formData = await request.formData()
+  const email = formData.get('email') as string
+  const password = formData.get('password') as string
+  const currentLang = formData.get('lang') as string || 'ja'
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+
+  let redirectUrl = ''
+
+  try {
+    const supabase = await createClient()
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: `${siteUrl}/api/auth/callback?next=/${currentLang}/dashboard`,
+      }
+    })
+
+    if (error) {
+      console.error('新規登録エラー:', error.message)
+      redirectUrl = `/${currentLang}/signup?message=error`
+    } else {
+      redirectUrl = `/${currentLang}/login?message=success`
+    }
+  } catch (e: any) {
+    console.error('予期せぬシステムエラー:', e.message)
+    redirectUrl = `/ja/signup?message=error`
+  }
+
+  return NextResponse.redirect(new URL(redirectUrl, request.url), 303)
+}
+</file>
+
+<file path="app/api/auth/update-password/route.ts">
+import { NextResponse } from 'next/server'
+import { createClient } from '@/utils/supabase/server'
+
+export const runtime = 'edge';
+
+export async function POST(request: Request) {
+  const formData = await request.formData()
+  const password = formData.get('password') as string
+  const currentLang = formData.get('lang') as string || 'ja'
+
+  try {
+    const supabase = await createClient()
+    const { error } = await supabase.auth.updateUser({ password })
+
+    if (error) {
+      console.error('パスワード更新エラー:', error.message)
+      return NextResponse.redirect(new URL(`/${currentLang}/update-password?message=error`, request.url), 303)
+    }
+    
+    return NextResponse.redirect(new URL(`/${currentLang}/dashboard?message=password_updated`, request.url), 303)
+  } catch (e: any) {
+    return NextResponse.redirect(new URL(`/${currentLang}/update-password?message=error`, request.url), 303)
+  }
 }
 </file>
 
@@ -1059,248 +1147,114 @@ export async function createClient() {
 }
 </file>
 
-<file path="app/[lang]/dashboard/page.tsx">
+<file path="app/[lang]/admin/page.tsx">
 import { createClient } from '@/utils/supabase/server'
+import { createClient as createAdminClient } from '@supabase/supabase-js' // ★追加：管理者権限用クライアント
 import { redirect } from 'next/navigation'
+import { revalidatePath } from 'next/cache'
 import Link from 'next/link'
-import Stripe from 'stripe'
-import { getDictionary } from '@/utils/get-dictionary'
-import LanguageSwitcher from '@/app/components/LanguageSwitcher'
+import DeleteButton from './DeleteButton'
 
 export const runtime = 'edge';
 
-type Video = { id: string; title: string; vimeo_id: string; thumbnail_url: string | null }
-
-export default async function DashboardPage({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }) {
+export default async function AdminDashboard({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }) {
   const { lang } = await params;
-  const dict = await getDictionary(lang);
-  
   const supabase = await createClient()
-
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect(`/${lang}/login`)
 
-  const isAdmin = user.email === process.env.ADMIN_EMAIL;
+  if (!user || user.email !== process.env.ADMIN_EMAIL) {
+    redirect('/dashboard')
+  }
 
-  const { data: subscription } = await supabase
-    .from('subscriptions').select('*').eq('user_id', user.id).eq('status', 'active').limit(1).maybeSingle()
+  // ★修正：RLSを無視して全データを取得できる管理者用クライアントを作成
+  const supabaseAdmin = createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
 
-  const { data: videos } = await supabase.from('videos').select('*')
+  // 管理者用クライアントを使ってサブスクリプション情報を取得
+  const { data: subscriptions } = await supabaseAdmin.from('subscriptions').select('*')
+  const activeSubs = subscriptions?.filter(sub => sub.status === 'active') || []
   
-  const { data: history } = await supabase
-    .from('viewing_history').select('vimeo_video_id').eq('user_id', user.id)
-  
-  const viewedIds = new Set(history?.map(h => h.vimeo_video_id) || [])
+  const lightCount = activeSubs.filter(sub => sub.plan_type === 'light').length
+  const standardCount = activeSubs.filter(sub => sub.plan_type === 'standard').length
+  const premiumCount = activeSubs.filter(sub => sub.plan_type === 'premium').length
 
-  const { data: latestHistory } = await supabase
-    .from('viewing_history').select('vimeo_video_id').eq('user_id', user.id)
-    .order('viewed_at', { ascending: false }).limit(1).maybeSingle()
-
-  let lastWatchedVideo: Video | null = null
-  if (latestHistory && videos) {
-    lastWatchedVideo = videos.find(v => v.vimeo_id === latestHistory.vimeo_video_id) as Video || null
-  }
-
-  const { data: favoritesData } = await supabase
-    .from('favorites').select('vimeo_video_id').eq('user_id', user.id).order('created_at', { ascending: false })
-
-  const favoriteIds = new Set(favoritesData?.map(f => f.vimeo_video_id) || [])
-  const favoriteVideos = videos?.filter(v => favoriteIds.has(v.vimeo_id)) as Video[] || []
-
-  const groupedVideos: Record<string, Video[]> = {}
-  if (videos) {
-    videos.forEach((video) => {
-      const match = video.title.match(/^(\d+)-/)
-      const section = match ? match[1] : 'その他'
-      if (!groupedVideos[section]) groupedVideos[section] = []
-      groupedVideos[section].push(video as Video)
-    })
-  }
-
-  const sortedSections = Object.keys(groupedVideos).sort((a, b) => {
-    if (a === 'その他') return 1; if (b === 'その他') return -1;
-    return parseInt(a) - parseInt(b);
-  })
-
-  const sectionStats = sortedSections.map(section => {
-    const totalCount = groupedVideos[section].length
-    const viewedCount = groupedVideos[section].filter(v => viewedIds.has(v.vimeo_id)).length
-    const progress = totalCount > 0 ? Math.round((viewedCount / totalCount) * 100) : 0
-    return { section, totalCount, viewedCount, progress }
-  })
-
-  const getPlanName = (planType: string) => {
-    switch (planType) {
-      case 'light': return dict.dashboard.planLight
-      case 'standard': return dict.dashboard.planStandard
-      case 'premium': return dict.dashboard.planPremium
-      default: return dict.dashboard.planNone
-    }
-  }
-
-  const signOut = async (formData: FormData) => {
-    'use server'
-    const currentLang = formData.get('lang') as string
-    const supabaseClient = await createClient()
-    await supabaseClient.auth.signOut()
-    redirect(`/${currentLang}/login`)
-  }
-
-  const goToBillingPortal = async (formData: FormData) => {
-    'use server'
-    const currentLang = formData.get('lang') as string
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, { apiVersion: '2026-02-25.clover' })
-    if (!subscription) return
-    
-    const stripeSub = await stripe.subscriptions.retrieve(subscription.stripe_subscription_id)
-    const customerId = stripeSub.customer as string
-
-    // ★追加：ポータルを開く直前に、Stripe上の顧客の言語設定を現在の言語で上書き保存します
-    await stripe.customers.update(customerId, {
-      preferred_locales: [currentLang === 'ja' ? 'ja' : 'en']
-    });
-
-    const session = await stripe.billingPortal.sessions.create({ 
-      customer: customerId, 
-      return_url: `http://localhost:3000/${currentLang}/dashboard`,
-      locale: currentLang === 'ja' ? 'ja' : 'en' 
-    })
-    
-    if (session.url) redirect(session.url)
-  }
-
-
-
-  const VideoCard = ({ video, label }: { video: Video, label?: string }) => {
-    const isViewed = viewedIds.has(video.vimeo_id)
-    return (
-      <Link href={`/${lang}/video/${video.vimeo_id}`} className="block group">
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-lg transition-all hover:border-blue-300 flex items-center p-3 gap-4 relative">
-          <div className="w-32 aspect-video bg-gray-100 rounded-lg flex-shrink-0 relative overflow-hidden flex items-center justify-center">
-            {video.thumbnail_url ? (
-               <img src={video.thumbnail_url} alt={video.title} className="object-cover w-full h-full group-hover:scale-105 transition-transform" />
-            ) : (
-               <span className="text-gray-400 text-xs font-medium">Video</span>
-            )}
-            {isViewed && (
-              <div className="absolute top-1 right-1 bg-green-500 text-white text-[10px] px-1.5 py-0.5 rounded shadow-sm font-bold">✓</div>
-            )}
-          </div>
-          <div className="flex-grow">
-            {label && <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded mb-1 inline-block">{label}</span>}
-            <h3 className="font-bold text-gray-900 group-hover:text-blue-600 transition-colors line-clamp-2">{video.title}</h3>
-          </div>
-          <div className="pr-4 hidden sm:block">
-            <span className="text-blue-600 font-medium text-sm">{dict.dashboard.watch}</span>
-          </div>
-        </div>
-      </Link>
-    )
-  }
+  const { data: videos } = await supabase.from('videos').select('*').order('created_at', { ascending: false })
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-8">
-      <div className="max-w-5xl mx-auto">
-        
-        {/* ヘッダー */}
-        <div className="flex justify-between items-center mb-8 bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-          <h1 className="text-2xl font-bold text-gray-800">{dict.dashboard.title}</h1>
-          
-          <div className="flex items-center gap-4">
-            <LanguageSwitcher currentLang={lang} />
-            {isAdmin && (
-              <Link href={`/${lang}/admin`} className="px-4 py-2 text-sm font-bold text-white bg-red-500 rounded-md hover:bg-red-600 transition-colors shadow-sm hidden sm:block">
-                {dict.dashboard.adminButton}
-              </Link>
-            )}
-            <form action={signOut}>
-              <input type="hidden" name="lang" value={lang} />
-              <button className="px-4 py-2 text-sm text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200">
-                {dict.dashboard.logoutButton}
-              </button>
-            </form>
+    <div className="min-h-screen bg-gray-900 text-gray-100 p-4 md:p-8 font-sans">
+      <div className="max-w-6xl mx-auto">
+        <div className="flex justify-between items-center mb-8 bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-lg">
+          <div>
+            <span className="text-xs font-bold bg-red-500 text-white px-2 py-1 rounded uppercase tracking-wider mb-2 inline-block">Admin Mode</span>
+            <h1 className="text-2xl font-bold text-white">運営管理ダッシュボード</h1>
           </div>
+          <Link href={`/${lang}/dashboard`} className="px-4 py-2 text-sm text-gray-300 bg-gray-700 rounded-md hover:bg-gray-600 transition-colors">
+            一般画面へ戻る
+          </Link>
         </div>
-        
-        {/* ご契約状況 */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6 mb-8">
-          <p className="mb-4 text-gray-600">
-            {dict.dashboard.welcome}<span className="font-semibold text-gray-800">{user.email}</span>{dict.dashboard.honorific}
-          </p>
-          <div className="bg-gradient-to-r from-blue-50 border-l-4 border-blue-500 rounded-r-md p-6">
-            <h2 className="text-sm font-bold text-blue-800 mb-2 tracking-wider">{dict.dashboard.subscriptionStatus}</h2>
-            {subscription ? (
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="space-y-8 lg:col-span-1">
+            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
+              <h2 className="text-lg font-bold text-white mb-4 border-b border-gray-700 pb-2">現在の有料会員数</h2>
+              <div className="text-4xl font-extrabold text-blue-400 mb-6">{activeSubs.length} <span className="text-base font-normal text-gray-400">名</span></div>
+              
+              <div className="space-y-3">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-gray-400">ライトプラン</span>
+                  <span className="font-bold text-white">{lightCount} 名</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-blue-400">スタンダード</span>
+                  <span className="font-bold text-white">{standardCount} 名</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-purple-400">プレミアム</span>
+                  <span className="font-bold text-white">{premiumCount} 名</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
+              <h2 className="text-lg font-bold text-white mb-4 border-b border-gray-700 pb-2">新しい動画を登録</h2>
+              <form action="/api/admin/add-video" method="POST" className="space-y-4">
+                <input type="hidden" name="lang" value={lang} />
                 <div>
-                  <p className="text-2xl font-extrabold text-blue-900 mb-1">{getPlanName(subscription.plan_type)}</p>
-                  <p className="text-sm text-blue-700">
-                    {dict.dashboard.renewalDate}{new Date(subscription.current_period_end).toLocaleDateString(lang === 'ja' ? 'ja-JP' : 'en-US')}
-                  </p>
+                  <label htmlFor="title" className="block text-sm font-medium text-gray-400 mb-1">セクション番号（例: 2-1）</label>
+                  <input type="text" name="title" id="title" required className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="2-1" />
                 </div>
-                <form action={goToBillingPortal}>
-                  <input type="hidden" name="lang" value={lang} />
-                  <button type="submit" className="text-sm bg-white border border-blue-200 text-blue-700 px-5 py-2.5 rounded-md hover:bg-blue-50 font-medium shadow-sm">
-                    {dict.dashboard.manageSubscription}
-                  </button>
-                </form>
-              </div>
-            ) : (
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <p className="text-blue-800 font-medium">{dict.dashboard.noSubscription}</p>
-                <Link href={`/${lang}/pricing`} className="inline-block px-6 py-2.5 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 text-center">
-                  {dict.dashboard.choosePlan}
-                </Link>
-              </div>
-            )}
+                <div>
+                  <label htmlFor="vimeo_id" className="block text-sm font-medium text-gray-400 mb-1">Vimeo ID（数字のみ）</label>
+                  <input type="text" name="vimeo_id" id="vimeo_id" required className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="123456789" />
+                </div>
+                <button type="submit" className="w-full py-2 bg-blue-600 text-white font-bold rounded-md hover:bg-blue-700 transition-colors mt-2">追加する</button>
+              </form>
+            </div>
           </div>
-        </div>
 
-        {/* クイックアクセス */}
-        {(lastWatchedVideo || favoriteVideos.length > 0) && (
-          <div className="mb-12 grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {lastWatchedVideo && (
-              <div>
-                <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                  <span className="text-blue-600">▶</span> {dict.dashboard.continueWatching}
-                </h2>
-                <VideoCard video={lastWatchedVideo} label={dict.dashboard.recentlyWatched} />
+          <div className="lg:col-span-2">
+            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg h-full max-h-[800px] flex flex-col">
+              <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-2">
+                <h2 className="text-lg font-bold text-white">登録済み動画一覧</h2>
+                <span className="text-sm text-gray-400">計 {videos?.length || 0} 本</span>
               </div>
-            )}
-            {favoriteVideos.length > 0 && (
-              <div>
-                <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                  <span className="text-pink-500">♥</span> {dict.dashboard.favorites}
-                </h2>
-                <div className="space-y-3">
-                  {favoriteVideos.slice(0, 3).map(video => (
-                    <VideoCard key={video.id} video={video} />
-                  ))}
-                </div>
+              <div className="overflow-y-auto pr-2 flex-grow space-y-2">
+                {videos?.map(video => (
+                  <div key={video.id} className="flex items-center justify-between bg-gray-700 p-3 rounded-lg border border-gray-600 hover:border-gray-500 transition-colors">
+                    <div><span className="text-blue-400 font-bold mr-3">{video.title}</span><span className="text-sm text-gray-400">ID: {video.vimeo_id}</span></div>
+                    <form action="/api/admin/delete-video" method="POST">
+                      <input type="hidden" name="lang" value={lang} />
+                      <input type="hidden" name="id" value={video.id} />
+                      <DeleteButton />
+                    </form>
+                  </div>
+                ))}
+                {(!videos || videos.length === 0) && <p className="text-gray-500 text-center py-8">動画が登録されていません。</p>}
               </div>
-            )}
+            </div>
           </div>
-        )}
-
-        {/* コース一覧（セクション一覧） */}
-        <h2 className="text-xl font-bold text-gray-800 mb-6 border-b border-gray-200 pb-2">{dict.dashboard.courseList}</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {sectionStats.map(({ section, totalCount, viewedCount, progress }) => (
-            <Link href={`/${lang}/section/${section}`} key={section} className="block group">
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-all hover:border-blue-300">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-bold text-gray-900 group-hover:text-blue-600">{dict.dashboard.section}{section}</h3>
-                  <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-md">{totalCount}{dict.dashboard.videosCount}</span>
-                </div>
-                <div className="w-full bg-gray-100 rounded-full h-2 mb-2">
-                  <div className="bg-blue-600 h-2 rounded-full transition-all duration-500" style={{ width: `${progress}%` }}></div>
-                </div>
-                <div className="flex justify-between text-xs text-gray-500 font-medium">
-                  <span>{dict.dashboard.progress}{progress}%</span>
-                  <span>{viewedCount} / {totalCount}{dict.dashboard.completed}</span>
-                </div>
-              </div>
-            </Link>
-          ))}
         </div>
       </div>
     </div>
@@ -1968,18 +1922,6 @@ export default function PasswordInput({
 }
 </file>
 
-<file path="next.config.ts">
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
-  serverActions: {
-    allowedOrigins: ['easy-japanese.shizuoka-connect.com']
-  }
-};
-
-export default nextConfig;
-</file>
-
 <file path=".gitignore">
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
@@ -2024,60 +1966,6 @@ yarn-error.log*
 next-env.d.ts
 
 stripe.exe
-</file>
-
-<file path="app/api/portal/route.ts">
-import { NextResponse } from 'next/server'
-import { createClient } from '@/utils/supabase/server'
-import Stripe from 'stripe'
-
-export const runtime = 'edge';
-
-
-
-export async function POST(req: Request) {
-
-  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
-  apiVersion: '2026-02-25.clover',
-  })
-  
-  try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-
-    if (!user) {
-      return NextResponse.json({ error: '認証されていません' }, { status: 401 })
-    }
-
-    // データベースから現在の契約のStripe IDを取得
-    const { data: subscription } = await supabase
-      .from('subscriptions')
-      .select('stripe_subscription_id')
-      .eq('user_id', user.id)
-      .eq('status', 'active')
-      .limit(1)
-      .single()
-
-    if (!subscription) {
-      return NextResponse.json({ error: '有効な契約が見つかりません' }, { status: 400 })
-    }
-
-    // Stripeから契約詳細を取得し、顧客ID（Customer ID）を特定
-    const stripeSub = await stripe.subscriptions.retrieve(subscription.stripe_subscription_id)
-    const customerId = stripeSub.customer as string
-
-    // 顧客専用のポータル画面（URL）を生成
-    const session = await stripe.billingPortal.sessions.create({
-      customer: customerId,
-      return_url: 'http://localhost:3000/dashboard', // ポータルから戻ってくる場所
-    })
-
-    return NextResponse.json({ url: session.url })
-  } catch (error: unknown) {
-    console.error('Portal Error:', error)
-    return NextResponse.json({ error: 'サーバーエラーが発生しました' }, { status: 500 })
-  }
-}
 </file>
 
 <file path="app/api/webhook/route.ts">
@@ -2223,6 +2111,391 @@ const eslintConfig = defineConfig([
 export default eslintConfig;
 </file>
 
+<file path="next.config.ts">
+// next.config.ts
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  serverActions: {
+    allowedOrigins: [
+      'easy-japanese.shizuoka-connect.com',
+      'https://easy-japanese.shizuoka-connect.com' // ★プロトコル付きを追加
+    ]
+  }
+};
+
+export default nextConfig;
+</file>
+
+<file path="app/api/portal/route.ts">
+import { NextResponse } from 'next/server'
+import { createClient } from '@/utils/supabase/server'
+import Stripe from 'stripe'
+
+export const runtime = 'edge';
+
+export async function POST(request: Request) {
+  const formData = await request.formData()
+  const currentLang = formData.get('lang') as string || 'ja'
+  
+  // リクエストのURLからオリジン（ドメイン部分）を動的に取得します
+  const origin = new URL(request.url).origin
+
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      return NextResponse.redirect(new URL(`/${currentLang}/login`, request.url), 303)
+    }
+
+    const { data: subscription } = await supabase
+      .from('subscriptions')
+      .select('stripe_subscription_id')
+      .eq('user_id', user.id)
+      .eq('status', 'active')
+      .limit(1)
+      .single()
+
+    if (!subscription) {
+      return NextResponse.redirect(new URL(`/${currentLang}/dashboard`, request.url), 303)
+    }
+
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
+      apiVersion: '2026-02-25.clover',
+    })
+
+    const stripeSub = await stripe.subscriptions.retrieve(subscription.stripe_subscription_id)
+    const customerId = stripeSub.customer as string
+
+    // Stripe上の顧客の言語設定を現在の言語で上書き保存します
+    await stripe.customers.update(customerId, {
+      preferred_locales: [currentLang === 'ja' ? 'ja' : 'en']
+    });
+
+    // 動的に取得したoriginを使ってreturn_urlを設定します
+    const session = await stripe.billingPortal.sessions.create({
+      customer: customerId,
+      return_url: `${origin}/${currentLang}/dashboard`,
+      locale: currentLang === 'ja' ? 'ja' : 'en'
+    })
+
+    if (session.url) {
+      // StripeのURLへリダイレクトさせます
+      return NextResponse.redirect(session.url, 303)
+    }
+    
+    return NextResponse.redirect(new URL(`/${currentLang}/dashboard`, request.url), 303)
+    
+  } catch (error: any) {
+    console.error('Portal Error:', error)
+    return NextResponse.redirect(new URL(`/${currentLang}/dashboard`, request.url), 303)
+  }
+}
+</file>
+
+<file path="tsconfig.json">
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": [
+        "./*"
+      ]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts",
+    "**/*.mts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}
+</file>
+
+<file path="app/[lang]/dashboard/page.tsx">
+import { createClient } from '@/utils/supabase/server'
+import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import Stripe from 'stripe'
+import { getDictionary } from '@/utils/get-dictionary'
+import LanguageSwitcher from '@/app/components/LanguageSwitcher'
+
+export const runtime = 'edge';
+
+type Video = { id: string; title: string; vimeo_id: string; thumbnail_url: string | null }
+
+export default async function DashboardPage({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }) {
+  const { lang } = await params;
+  const dict = await getDictionary(lang);
+  
+  const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect(`/${lang}/login`)
+
+  const isAdmin = user.email === process.env.ADMIN_EMAIL;
+
+  const { data: subscription } = await supabase
+    .from('subscriptions').select('*').eq('user_id', user.id).eq('status', 'active').limit(1).maybeSingle()
+
+  const { data: videos } = await supabase.from('videos').select('*')
+  
+  const { data: history } = await supabase
+    .from('viewing_history').select('vimeo_video_id').eq('user_id', user.id)
+  
+  const viewedIds = new Set(history?.map(h => h.vimeo_video_id) || [])
+
+  const { data: latestHistory } = await supabase
+    .from('viewing_history').select('vimeo_video_id').eq('user_id', user.id)
+    .order('viewed_at', { ascending: false }).limit(1).maybeSingle()
+
+  let lastWatchedVideo: Video | null = null
+  if (latestHistory && videos) {
+    lastWatchedVideo = videos.find(v => v.vimeo_id === latestHistory.vimeo_video_id) as Video || null
+  }
+
+  const { data: favoritesData } = await supabase
+    .from('favorites').select('vimeo_video_id').eq('user_id', user.id).order('created_at', { ascending: false })
+
+  const favoriteIds = new Set(favoritesData?.map(f => f.vimeo_video_id) || [])
+  const favoriteVideos = videos?.filter(v => favoriteIds.has(v.vimeo_id)) as Video[] || []
+
+  const groupedVideos: Record<string, Video[]> = {}
+  if (videos) {
+    videos.forEach((video) => {
+      const match = video.title.match(/^(\d+)-/)
+      const section = match ? match[1] : 'その他'
+      if (!groupedVideos[section]) groupedVideos[section] = []
+      groupedVideos[section].push(video as Video)
+    })
+  }
+
+  const sortedSections = Object.keys(groupedVideos).sort((a, b) => {
+    if (a === 'その他') return 1; if (b === 'その他') return -1;
+    return parseInt(a) - parseInt(b);
+  })
+
+  const sectionStats = sortedSections.map(section => {
+    const totalCount = groupedVideos[section].length
+    const viewedCount = groupedVideos[section].filter(v => viewedIds.has(v.vimeo_id)).length
+    const progress = totalCount > 0 ? Math.round((viewedCount / totalCount) * 100) : 0
+    return { section, totalCount, viewedCount, progress }
+  })
+
+  const getPlanName = (planType: string) => {
+    switch (planType) {
+      case 'light': return dict.dashboard.planLight
+      case 'standard': return dict.dashboard.planStandard
+      case 'premium': return dict.dashboard.planPremium
+      default: return dict.dashboard.planNone
+    }
+  }
+
+  const VideoCard = ({ video, label }: { video: Video, label?: string }) => {
+    const isViewed = viewedIds.has(video.vimeo_id)
+    return (
+      <Link href={`/${lang}/video/${video.vimeo_id}`} className="block group">
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-lg transition-all hover:border-blue-300 flex items-center p-3 gap-4 relative">
+          <div className="w-32 aspect-video bg-gray-100 rounded-lg flex-shrink-0 relative overflow-hidden flex items-center justify-center">
+            {video.thumbnail_url ? (
+               <img src={video.thumbnail_url} alt={video.title} className="object-cover w-full h-full group-hover:scale-105 transition-transform" />
+            ) : (
+               <span className="text-gray-400 text-xs font-medium">Video</span>
+            )}
+            {isViewed && (
+              <div className="absolute top-1 right-1 bg-green-500 text-white text-[10px] px-1.5 py-0.5 rounded shadow-sm font-bold">✓</div>
+            )}
+          </div>
+          <div className="flex-grow">
+            {label && <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded mb-1 inline-block">{label}</span>}
+            <h3 className="font-bold text-gray-900 group-hover:text-blue-600 transition-colors line-clamp-2">{video.title}</h3>
+          </div>
+          <div className="pr-4 hidden sm:block">
+            <span className="text-blue-600 font-medium text-sm">{dict.dashboard.watch}</span>
+          </div>
+        </div>
+      </Link>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-4 md:p-8">
+      <div className="max-w-5xl mx-auto">
+        
+        {/* ヘッダー */}
+        <div className="flex justify-between items-center mb-8 bg-white p-4 rounded-lg shadow-sm border border-gray-100">
+          <h1 className="text-2xl font-bold text-gray-800">{dict.dashboard.title}</h1>
+          
+          <div className="flex items-center gap-4">
+            <LanguageSwitcher currentLang={lang} />
+            {isAdmin && (
+              <Link href={`/${lang}/admin`} className="px-4 py-2 text-sm font-bold text-white bg-red-500 rounded-md hover:bg-red-600 transition-colors shadow-sm hidden sm:block">
+                {dict.dashboard.adminButton}
+              </Link>
+            )}
+            {/* action属性をAPIのURLに変更し、method="POST"を追加します */}
+            <form action="/api/auth/signout" method="POST">
+              <input type="hidden" name="lang" value={lang} />
+              <button className="px-4 py-2 text-sm text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200">
+                {dict.dashboard.logoutButton}
+              </button>
+            </form>
+          </div>
+        </div>
+        
+        {/* ご契約状況 */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6 mb-8">
+          <p className="mb-4 text-gray-600">
+            {dict.dashboard.welcome}<span className="font-semibold text-gray-800">{user.email}</span>{dict.dashboard.honorific}
+          </p>
+          <div className="bg-gradient-to-r from-blue-50 border-l-4 border-blue-500 rounded-r-md p-6">
+            <h2 className="text-sm font-bold text-blue-800 mb-2 tracking-wider">{dict.dashboard.subscriptionStatus}</h2>
+            {subscription ? (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <p className="text-2xl font-extrabold text-blue-900 mb-1">{getPlanName(subscription.plan_type)}</p>
+                  <p className="text-sm text-blue-700">
+                    {dict.dashboard.renewalDate}{new Date(subscription.current_period_end).toLocaleDateString(lang === 'ja' ? 'ja-JP' : 'en-US')}
+                  </p>
+                </div>
+                {/* 修正後 */}
+                <form action="/api/portal" method="POST">
+                  <input type="hidden" name="lang" value={lang} />
+                   <button type="submit" className="text-sm bg-white border border-blue-200 text-blue-700 px-5 py-2.5 rounded-md hover:bg-blue-50 font-medium shadow-sm">
+                     {dict.dashboard.manageSubscription}
+                   </button>
+                </form>
+              </div>
+            ) : (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <p className="text-blue-800 font-medium">{dict.dashboard.noSubscription}</p>
+                <Link href={`/${lang}/pricing`} className="inline-block px-6 py-2.5 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 text-center">
+                  {dict.dashboard.choosePlan}
+                </Link>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* クイックアクセス */}
+        {(lastWatchedVideo || favoriteVideos.length > 0) && (
+          <div className="mb-12 grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {lastWatchedVideo && (
+              <div>
+                <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                  <span className="text-blue-600">▶</span> {dict.dashboard.continueWatching}
+                </h2>
+                <VideoCard video={lastWatchedVideo} label={dict.dashboard.recentlyWatched} />
+              </div>
+            )}
+            {favoriteVideos.length > 0 && (
+              <div>
+                <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                  <span className="text-pink-500">♥</span> {dict.dashboard.favorites}
+                </h2>
+                <div className="space-y-3">
+                  {favoriteVideos.slice(0, 3).map(video => (
+                    <VideoCard key={video.id} video={video} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* コース一覧（セクション一覧） */}
+        <h2 className="text-xl font-bold text-gray-800 mb-6 border-b border-gray-200 pb-2">{dict.dashboard.courseList}</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {sectionStats.map(({ section, totalCount, viewedCount, progress }) => (
+            <Link href={`/${lang}/section/${section}`} key={section} className="block group">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-all hover:border-blue-300">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-bold text-gray-900 group-hover:text-blue-600">{dict.dashboard.section}{section}</h3>
+                  <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-md">{totalCount}{dict.dashboard.videosCount}</span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-2 mb-2">
+                  <div className="bg-blue-600 h-2 rounded-full transition-all duration-500" style={{ width: `${progress}%` }}></div>
+                </div>
+                <div className="flex justify-between text-xs text-gray-500 font-medium">
+                  <span>{dict.dashboard.progress}{progress}%</span>
+                  <span>{viewedCount} / {totalCount}{dict.dashboard.completed}</span>
+                </div>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+</file>
+
+<file path="package.json">
+{
+  "name": "video",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@stripe/stripe-js": "^8.9.0",
+    "@supabase/ssr": "^0.9.0",
+    "@supabase/supabase-js": "^2.98.0",
+    "@vimeo/player": "^2.30.3",
+    "next": "15.5.13",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "stripe": "^20.4.1"
+  },
+  "devDependencies": {
+    "@cloudflare/next-on-pages": "^1.13.16",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/vimeo__player": "^2.18.3",
+    "eslint": "^9",
+    "eslint-config-next": "15.5.13",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  },
+  "overrides": {
+    "next": "$next"
+  }
+}
+</file>
+
 <file path="app/[lang]/login/page.tsx">
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
@@ -2230,6 +2503,7 @@ import Link from 'next/link'
 import { getDictionary } from '@/utils/get-dictionary'
 import LanguageSwitcher from '@/app/components/LanguageSwitcher'
 import PasswordInput from '@/app/components/PasswordInput'
+
 
 export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
@@ -2245,38 +2519,7 @@ export default async function LoginPage({
   const { message } = await searchParams;
   const dict = await getDictionary(lang);
 
-  const signIn = async (formData: FormData) => {
-    'use server'
-    let redirectUrl = ''
 
-    try {
-      const email = formData.get('email') as string
-      const password = formData.get('password') as string
-      const currentLang = formData.get('lang') as string
-      const supabase = await createClient()
-
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
-
-      if (error) {
-        console.error('ログインエラー:', error.message)
-        redirectUrl = `/${currentLang}/login?message=error`
-      } else {
-        redirectUrl = `/${currentLang}/dashboard`
-      }
-    } catch (e: any) {
-      console.error('予期せぬシステムエラー:', e.message)
-      // エラーでクラッシュさせず、安全にエラーメッセージ付きのURLへ戻します
-      redirectUrl = `/ja/login?message=error`
-    }
-
-    // Next.jsの仕様上、redirectは必ずtry...catchブロックの外で実行します
-    if (redirectUrl) {
-      redirect(redirectUrl)
-    }
-  }
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 relative">
@@ -2284,7 +2527,7 @@ export default async function LoginPage({
         <LanguageSwitcher currentLang={lang} />
       </div>
 
-      <form action={signIn} className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
+      <form action="/api/auth/login" method="POST" className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
         <input type="hidden" name="lang" value={lang} />
         
         <h1 className="text-2xl font-bold text-center mb-4 text-gray-800">{dict.auth.loginTitle}</h1>
@@ -2366,30 +2609,7 @@ export default async function ResetPasswordPage({
   const { message } = await searchParams;
   const dict = await getDictionary(lang);
 
-  const requestReset = async (formData: FormData) => {
-    'use server'
-    const email = formData.get('email') as string
-    const currentLang = formData.get('lang') as string
-    
-    const headersList = await headers()
-    const origin = headersList.get('origin') || 'http://localhost:3000'
-    
-    const supabase = await createClient()
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${origin}/api/auth/callback?next=/${currentLang}/update-password`,
-    })
-
-    if (error) {
-      console.error('メール送信エラー:', error.message)
-      // ★追加：エラーメッセージに「rate limit」が含まれているか判定します
-      if (error.message.toLowerCase().includes('rate limit')) {
-        return redirect(`/${currentLang}/reset-password?message=rate_limit`)
-      }
-      return redirect(`/${currentLang}/reset-password?message=error`)
-    }
-    return redirect(`/${currentLang}/reset-password?message=success`)
-  }
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 relative">
@@ -2397,7 +2617,7 @@ export default async function ResetPasswordPage({
         <LanguageSwitcher currentLang={lang} />
       </div>
 
-      <form action={requestReset} className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
+      <form action="/api/auth/reset-password" method="POST" className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
         <input type="hidden" name="lang" value={lang} />
         
         <h1 className="text-2xl font-bold text-center mb-2 text-gray-800">{dict.auth.resetPasswordTitle}</h1>
@@ -2426,6 +2646,9 @@ export default async function ResetPasswordPage({
         
         <label className="text-sm font-medium text-gray-700" htmlFor="email">{dict.auth.emailLabel}</label>
         <input
+          id="email"    // ← 追加（ラベルの htmlFor="email" と紐付けるため）
+          name="email"  // ← 追加（一番重要：APIへデータを送るため）
+          type="email"  // ← 追加（スマホ等のキーボード入力を最適化するため）
           className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white w-full"
           placeholder={dict.auth.emailPlaceholder}
           required
@@ -2469,36 +2692,16 @@ export default async function UpdatePasswordPage({
   const { message } = await searchParams;
   const dict = await getDictionary(lang);
 
-  const updatePassword = async (formData: FormData) => {
-    'use server'
-    const password = formData.get('password') as string
-    const currentLang = formData.get('lang') as string
-    
-    const supabase = await createClient()
-
-    // 認証済みのセッション情報を使ってパスワードを更新します
-    const { error } = await supabase.auth.updateUser({
-      password: password
-    })
-
-    if (error) {
-      console.error('パスワード更新エラー:', error.message)
-      return redirect(`/${currentLang}/update-password?message=error`)
-    }
-    
-    // 更新成功時はダッシュボードへリダイレクトします
-    return redirect(`/${currentLang}/dashboard?message=password_updated`)
-  }
-
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 relative">
       <div className="absolute top-6 right-6">
         <LanguageSwitcher currentLang={lang} />
       </div>
-
-      <form action={updatePassword} className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
-        <input type="hidden" name="lang" value={lang} />
         
+      {/* action属性をAPIのURLに変更し、method="POST"を追加します */}
+      <form action="/api/auth/update-password" method="POST" className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
+        <input type="hidden" name="lang" value={lang} />
+
         <h1 className="text-2xl font-bold text-center mb-2 text-gray-800">{dict.auth.updatePasswordTitle}</h1>
         
         {message === 'error' && (
@@ -2506,6 +2709,7 @@ export default async function UpdatePasswordPage({
             {dict.auth.generalError}
           </div>
         )}
+
         
         <label className="text-sm font-medium text-gray-700 mt-2" htmlFor="password">{dict.auth.newPasswordLabel}</label>
         <PasswordInput 
@@ -2525,51 +2729,6 @@ export default async function UpdatePasswordPage({
       </form>
     </div>
   )
-}
-</file>
-
-<file path="tsconfig.json">
-{
-  "compilerOptions": {
-    "target": "ES2017",
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
-    ],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "noEmit": true,
-    "esModuleInterop": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "preserve",
-    "incremental": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
-    "paths": {
-      "@/*": [
-        "./*"
-      ]
-    }
-  },
-  "include": [
-    "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
-    ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts",
-    "**/*.mts"
-  ],
-  "exclude": [
-    "node_modules"
-  ]
 }
 </file>
 
@@ -2595,41 +2754,7 @@ export default async function SignupPage({
   const { message } = await searchParams;
   const dict = await getDictionary(lang);
 
-  const signUp = async (formData: FormData) => {
-    'use server'
-    let redirectUrl = ''
 
-    try {
-      const email = formData.get('email') as string
-      const password = formData.get('password') as string
-      const currentLang = formData.get('lang') as string
-      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
-      
-      const supabase = await createClient()
-
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: `${siteUrl}/api/auth/callback?next=/${currentLang}/dashboard`,
-        }
-      })
-
-      if (error) {
-        console.error('新規登録エラー:', error.message)
-        redirectUrl = `/${currentLang}/signup?message=error`
-      } else {
-        redirectUrl = `/${currentLang}/login?message=success`
-      }
-    } catch (e: any) {
-      console.error('予期せぬシステムエラー:', e.message)
-      redirectUrl = `/ja/signup?message=error`
-    }
-
-    if (redirectUrl) {
-      redirect(redirectUrl)
-    }
-  }
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 relative">
@@ -2637,7 +2762,7 @@ export default async function SignupPage({
         <LanguageSwitcher currentLang={lang} />
       </div>
       
-      <form action={signUp} className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
+      <form action="/api/auth/signup" method="POST" className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
         <input type="hidden" name="lang" value={lang} />
         
         <h1 className="text-2xl font-bold text-center mb-4 text-gray-800">{dict.auth.signupTitle}</h1>
@@ -2682,45 +2807,6 @@ export default async function SignupPage({
       </form>
     </div>
   )
-}
-</file>
-
-<file path="package.json">
-{
-  "name": "video",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
-  },
-  "dependencies": {
-    "@stripe/stripe-js": "^8.9.0",
-    "@supabase/ssr": "^0.9.0",
-    "@supabase/supabase-js": "^2.98.0",
-    "@vimeo/player": "^2.30.3",
-    "next": "15.5.13",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "stripe": "^20.4.1"
-  },
-  "devDependencies": {
-    "@cloudflare/next-on-pages": "^1.13.16",
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "@types/vimeo__player": "^2.18.3",
-    "eslint": "^9",
-    "eslint-config-next": "15.5.13",
-    "tailwindcss": "^4",
-    "typescript": "^5"
-  },
-  "overrides": {
-    "next": "$next"
-  }
 }
 </file>
 

@@ -9,17 +9,17 @@ export async function POST(req: Request) {
 
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
     apiVersion: '2026-02-25.clover',
+    httpClient: Stripe.createFetchHttpClient(),
   })
   const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET as string
-
-
   const body = await req.text()
   const sig = req.headers.get('stripe-signature') as string
 
   let event: Stripe.Event
 
   try {
-    event = stripe.webhooks.constructEvent(body, sig, endpointSecret)
+    // 変更: 同期メソッドから非同期メソッド（Edge/Web Crypto対応）へ変更します
+    event = await stripe.webhooks.constructEventAsync(body, sig, endpointSecret)
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error'
     console.error(`Webhook Error: ${message}`)
