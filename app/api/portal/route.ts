@@ -4,23 +4,21 @@ import Stripe from 'stripe'
 
 export const runtime = 'edge';
 
-
-
-export async function POST(req: Request) {
-
-  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
-  apiVersion: '2026-02-25.clover',
-  })
+export async function POST(request: Request) {
+  const formData = await request.formData()
+  const currentLang = formData.get('lang') as string || 'ja'
   
+  // リクエストのURLからオリジン（ドメイン部分）を動的に取得します
+  const origin = new URL(request.url).origin
+
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
     if (!user) {
-      return NextResponse.json({ error: '認証されていません' }, { status: 401 })
+      return NextResponse.redirect(new URL(`/${currentLang}/login`, request.url), 303)
     }
 
-    // データベースから現在の契約のStripe IDを取得
     const { data: subscription } = await supabase
       .from('subscriptions')
       .select('stripe_subscription_id')
@@ -30,22 +28,37 @@ export async function POST(req: Request) {
       .single()
 
     if (!subscription) {
-      return NextResponse.json({ error: '有効な契約が見つかりません' }, { status: 400 })
+      return NextResponse.redirect(new URL(`/${currentLang}/dashboard`, request.url), 303)
     }
 
-    // Stripeから契約詳細を取得し、顧客ID（Customer ID）を特定
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
+      apiVersion: '2026-02-25.clover',
+    })
+
     const stripeSub = await stripe.subscriptions.retrieve(subscription.stripe_subscription_id)
     const customerId = stripeSub.customer as string
 
-    // 顧客専用のポータル画面（URL）を生成
+    // Stripe上の顧客の言語設定を現在の言語で上書き保存します
+    await stripe.customers.update(customerId, {
+      preferred_locales: [currentLang === 'ja' ? 'ja' : 'en']
+    });
+
+    // 動的に取得したoriginを使ってreturn_urlを設定します
     const session = await stripe.billingPortal.sessions.create({
       customer: customerId,
-      return_url: 'http://localhost:3000/dashboard', // ポータルから戻ってくる場所
+      return_url: `${origin}/${currentLang}/dashboard`,
+      locale: currentLang === 'ja' ? 'ja' : 'en'
     })
 
-    return NextResponse.json({ url: session.url })
-  } catch (error: unknown) {
+    if (session.url) {
+      // StripeのURLへリダイレクトさせます
+      return NextResponse.redirect(session.url, 303)
+    }
+    
+    return NextResponse.redirect(new URL(`/${currentLang}/dashboard`, request.url), 303)
+    
+  } catch (error: any) {
     console.error('Portal Error:', error)
-    return NextResponse.json({ error: 'サーバーエラーが発生しました' }, { status: 500 })
+    return NextResponse.redirect(new URL(`/${currentLang}/dashboard`, request.url), 303)
   }
 }

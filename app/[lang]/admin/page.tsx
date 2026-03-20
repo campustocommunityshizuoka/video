@@ -32,29 +32,6 @@ export default async function AdminDashboard({ params }: { params: Promise<{ lan
 
   const { data: videos } = await supabase.from('videos').select('*').order('created_at', { ascending: false })
 
-  const addVideo = async (formData: FormData) => {
-    'use server'
-    const title = formData.get('title') as string
-    const vimeo_id = formData.get('vimeo_id') as string
-    
-    if (!title || !vimeo_id) return
-
-    const supabaseServer = await createClient()
-    await supabaseServer.from('videos').insert({ title, vimeo_id })
-    
-    revalidatePath('/admin')
-  }
-
-  const deleteVideo = async (formData: FormData) => {
-    'use server'
-    const id = formData.get('id') as string
-    
-    const supabaseServer = await createClient()
-    await supabaseServer.from('videos').delete().eq('id', id)
-    
-    revalidatePath('/admin')
-  }
-
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 p-4 md:p-8 font-sans">
       <div className="max-w-6xl mx-auto">
@@ -92,7 +69,8 @@ export default async function AdminDashboard({ params }: { params: Promise<{ lan
 
             <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
               <h2 className="text-lg font-bold text-white mb-4 border-b border-gray-700 pb-2">新しい動画を登録</h2>
-              <form action={addVideo} className="space-y-4">
+              <form action="/api/admin/add-video" method="POST" className="space-y-4">
+                <input type="hidden" name="lang" value={lang} />
                 <div>
                   <label htmlFor="title" className="block text-sm font-medium text-gray-400 mb-1">セクション番号（例: 2-1）</label>
                   <input type="text" name="title" id="title" required className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="2-1" />
@@ -116,7 +94,11 @@ export default async function AdminDashboard({ params }: { params: Promise<{ lan
                 {videos?.map(video => (
                   <div key={video.id} className="flex items-center justify-between bg-gray-700 p-3 rounded-lg border border-gray-600 hover:border-gray-500 transition-colors">
                     <div><span className="text-blue-400 font-bold mr-3">{video.title}</span><span className="text-sm text-gray-400">ID: {video.vimeo_id}</span></div>
-                    <form action={deleteVideo}><input type="hidden" name="id" value={video.id} /><DeleteButton /></form>
+                    <form action="/api/admin/delete-video" method="POST">
+                      <input type="hidden" name="lang" value={lang} />
+                      <input type="hidden" name="id" value={video.id} />
+                      <DeleteButton />
+                    </form>
                   </div>
                 ))}
                 {(!videos || videos.length === 0) && <p className="text-gray-500 text-center py-8">動画が登録されていません。</p>}

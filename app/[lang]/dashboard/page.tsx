@@ -76,31 +76,6 @@ export default async function DashboardPage({ params }: { params: Promise<{ lang
     }
   }
 
-  const goToBillingPortal = async (formData: FormData) => {
-    'use server'
-    const currentLang = formData.get('lang') as string
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, { apiVersion: '2026-02-25.clover' })
-    if (!subscription) return
-    
-    const stripeSub = await stripe.subscriptions.retrieve(subscription.stripe_subscription_id)
-    const customerId = stripeSub.customer as string
-
-    // ★追加：ポータルを開く直前に、Stripe上の顧客の言語設定を現在の言語で上書き保存します
-    await stripe.customers.update(customerId, {
-      preferred_locales: [currentLang === 'ja' ? 'ja' : 'en']
-    });
-
-    const session = await stripe.billingPortal.sessions.create({ 
-      customer: customerId, 
-      return_url: `http://localhost:3000/${currentLang}/dashboard`,
-      locale: currentLang === 'ja' ? 'ja' : 'en' 
-    })
-    
-    if (session.url) redirect(session.url)
-  }
-
-
-
   const VideoCard = ({ video, label }: { video: Video, label?: string }) => {
     const isViewed = viewedIds.has(video.vimeo_id)
     return (
@@ -168,11 +143,12 @@ export default async function DashboardPage({ params }: { params: Promise<{ lang
                     {dict.dashboard.renewalDate}{new Date(subscription.current_period_end).toLocaleDateString(lang === 'ja' ? 'ja-JP' : 'en-US')}
                   </p>
                 </div>
-                <form action={goToBillingPortal}>
+                {/* 修正後 */}
+                <form action="/api/portal" method="POST">
                   <input type="hidden" name="lang" value={lang} />
-                  <button type="submit" className="text-sm bg-white border border-blue-200 text-blue-700 px-5 py-2.5 rounded-md hover:bg-blue-50 font-medium shadow-sm">
-                    {dict.dashboard.manageSubscription}
-                  </button>
+                   <button type="submit" className="text-sm bg-white border border-blue-200 text-blue-700 px-5 py-2.5 rounded-md hover:bg-blue-50 font-medium shadow-sm">
+                     {dict.dashboard.manageSubscription}
+                   </button>
                 </form>
               </div>
             ) : (
