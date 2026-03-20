@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { headers } from 'next/headers'
 import { getDictionary } from '@/utils/get-dictionary'
 import LanguageSwitcher from '@/app/components/LanguageSwitcher'
+import { requestResetAction } from '@/app/actions/auth'
 
 export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
@@ -19,30 +20,7 @@ export default async function ResetPasswordPage({
   const { message } = await searchParams;
   const dict = await getDictionary(lang);
 
-  const requestReset = async (formData: FormData) => {
-    'use server'
-    const email = formData.get('email') as string
-    const currentLang = formData.get('lang') as string
-    
-    const headersList = await headers()
-    const origin = headersList.get('origin') || 'http://localhost:3000'
-    
-    const supabase = await createClient()
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${origin}/api/auth/callback?next=/${currentLang}/update-password`,
-    })
-
-    if (error) {
-      console.error('メール送信エラー:', error.message)
-      // ★追加：エラーメッセージに「rate limit」が含まれているか判定します
-      if (error.message.toLowerCase().includes('rate limit')) {
-        return redirect(`/${currentLang}/reset-password?message=rate_limit`)
-      }
-      return redirect(`/${currentLang}/reset-password?message=error`)
-    }
-    return redirect(`/${currentLang}/reset-password?message=success`)
-  }
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 relative">
@@ -50,7 +28,7 @@ export default async function ResetPasswordPage({
         <LanguageSwitcher currentLang={lang} />
       </div>
 
-      <form action={requestReset} className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
+      <form action={requestResetAction} className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
         <input type="hidden" name="lang" value={lang} />
         
         <h1 className="text-2xl font-bold text-center mb-2 text-gray-800">{dict.auth.resetPasswordTitle}</h1>

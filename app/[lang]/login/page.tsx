@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { getDictionary } from '@/utils/get-dictionary'
 import LanguageSwitcher from '@/app/components/LanguageSwitcher'
 import PasswordInput from '@/app/components/PasswordInput'
+import { signInAction } from '@/app/actions/auth'
+
 
 export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
@@ -19,38 +21,7 @@ export default async function LoginPage({
   const { message } = await searchParams;
   const dict = await getDictionary(lang);
 
-  const signIn = async (formData: FormData) => {
-    'use server'
-    let redirectUrl = ''
 
-    try {
-      const email = formData.get('email') as string
-      const password = formData.get('password') as string
-      const currentLang = formData.get('lang') as string
-      const supabase = await createClient()
-
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
-
-      if (error) {
-        console.error('ログインエラー:', error.message)
-        redirectUrl = `/${currentLang}/login?message=error`
-      } else {
-        redirectUrl = `/${currentLang}/dashboard`
-      }
-    } catch (e: any) {
-      console.error('予期せぬシステムエラー:', e.message)
-      // エラーでクラッシュさせず、安全にエラーメッセージ付きのURLへ戻します
-      redirectUrl = `/ja/login?message=error`
-    }
-
-    // Next.jsの仕様上、redirectは必ずtry...catchブロックの外で実行します
-    if (redirectUrl) {
-      redirect(redirectUrl)
-    }
-  }
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 relative">
@@ -58,7 +29,8 @@ export default async function LoginPage({
         <LanguageSwitcher currentLang={lang} />
       </div>
 
-      <form action={signIn} className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
+      <form action={signInAction} className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
+      
         <input type="hidden" name="lang" value={lang} />
         
         <h1 className="text-2xl font-bold text-center mb-4 text-gray-800">{dict.auth.loginTitle}</h1>

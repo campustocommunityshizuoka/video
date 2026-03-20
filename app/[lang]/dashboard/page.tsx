@@ -4,6 +4,7 @@ import Link from 'next/link'
 import Stripe from 'stripe'
 import { getDictionary } from '@/utils/get-dictionary'
 import LanguageSwitcher from '@/app/components/LanguageSwitcher'
+import { signOutAction } from '@/app/actions/auth'
 
 export const runtime = 'edge';
 
@@ -76,14 +77,6 @@ export default async function DashboardPage({ params }: { params: Promise<{ lang
     }
   }
 
-  const signOut = async (formData: FormData) => {
-    'use server'
-    const currentLang = formData.get('lang') as string
-    const supabaseClient = await createClient()
-    await supabaseClient.auth.signOut()
-    redirect(`/${currentLang}/login`)
-  }
-
   const goToBillingPortal = async (formData: FormData) => {
     'use server'
     const currentLang = formData.get('lang') as string
@@ -151,7 +144,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ lang
                 {dict.dashboard.adminButton}
               </Link>
             )}
-            <form action={signOut}>
+            <form action={signOutAction}>
               <input type="hidden" name="lang" value={lang} />
               <button className="px-4 py-2 text-sm text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200">
                 {dict.dashboard.logoutButton}

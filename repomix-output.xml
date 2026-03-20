@@ -531,50 +531,6 @@ export default function LanguageSwitcher({ currentLang }: { currentLang: string 
 }
 </file>
 
-<file path="app/components/PasswordInput.tsx">
-'use client'
-
-import { useState } from 'react'
-
-export default function PasswordInput({ 
-  name, 
-  placeholder, 
-  required = false, 
-  minLength,
-  showText,
-  hideText
-}: { 
-  name: string, 
-  placeholder: string, 
-  required?: boolean, 
-  minLength?: number,
-  showText: string,
-  hideText: string
-}) {
-  const [show, setShow] = useState(false)
-
-  return (
-    <div className="relative w-full">
-      <input
-        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-16 font-sans"
-        name={name}
-        type={show ? 'text' : 'password'}
-        placeholder={placeholder}
-        required={required}
-        minLength={minLength}
-      />
-      <button
-        type="button"
-        onClick={() => setShow(!show)}
-        className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors"
-      >
-        {show ? hideText : showText}
-      </button>
-    </div>
-  )
-}
-</file>
-
 <file path="app/globals.css">
 @import "tailwindcss";
 
@@ -907,16 +863,6 @@ export const config = {
     '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }
-</file>
-
-<file path="next.config.ts">
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
-  /* config options here */
-};
-
-export default nextConfig;
 </file>
 
 <file path="postcss.config.mjs">
@@ -1410,111 +1356,6 @@ export default async function RootLayout({
 }
 </file>
 
-<file path="app/[lang]/login/page.tsx">
-import { createClient } from '@/utils/supabase/server'
-import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import { getDictionary } from '@/utils/get-dictionary'
-import LanguageSwitcher from '@/app/components/LanguageSwitcher'
-import PasswordInput from '@/app/components/PasswordInput'
-
-export const runtime = 'edge';
-
-export default async function LoginPage({ 
-  params, 
-  searchParams 
-}: { 
-  params: Promise<{ lang: 'ja' | 'en' }>,
-  searchParams: Promise<{ message?: string }>
-}) {
-  const { lang } = await params;
-  const { message } = await searchParams;
-  const dict = await getDictionary(lang);
-
-  const signIn = async (formData: FormData) => {
-    'use server'
-    const email = formData.get('email') as string
-    const password = formData.get('password') as string
-    const currentLang = formData.get('lang') as string
-    const supabase = await createClient()
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-
-    if (error) {
-      return redirect(`/${currentLang}/login?message=error`)
-    }
-    return redirect(`/${currentLang}/dashboard`)
-  }
-
-  return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 relative">
-      <div className="absolute top-6 right-6">
-        <LanguageSwitcher currentLang={lang} />
-      </div>
-
-      <form action={signIn} className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
-        <input type="hidden" name="lang" value={lang} />
-        
-        <h1 className="text-2xl font-bold text-center mb-4 text-gray-800">{dict.auth.loginTitle}</h1>
-        
-        {message === 'error' && (
-          <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm text-center mb-2">
-            {dict.auth.loginError}
-          </div>
-        )}
-        {message === 'success' && (
-          <div className="bg-green-50 text-green-700 p-3 rounded-md text-sm text-center mb-2">
-            {dict.auth.signupSuccess}
-          </div>
-        )}
-        
-        <label className="text-sm font-medium text-gray-700" htmlFor="email">{dict.auth.emailLabel}</label>
-        <input
-          className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          name="email"
-          type="email"
-          placeholder={dict.auth.emailPlaceholder}
-          required
-        />
-        
-        <label className="text-sm font-medium text-gray-700 mt-2" htmlFor="password">{dict.auth.passwordLabel}</label>
-        <PasswordInput 
-          name="password"
-          placeholder={dict.auth.passwordPlaceholder}
-          required={true}
-          minLength={6}
-          showText={dict.auth.showPassword}
-          hideText={dict.auth.hidePassword}
-        />
-        
-        {/* ★追加：パスワードリセットへの導線 */}
-        <div className="flex justify-end mt-1">
-          <Link href={`/${lang}/reset-password`} className="text-xs text-blue-600 hover:underline font-medium">
-            {dict.auth.forgotPassword}
-          </Link>
-        </div>
-        
-        <div className="flex flex-col gap-2 mt-6">
-          <button type="submit" className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors font-medium">
-            {dict.auth.loginButton}
-          </button>
-        </div>
-
-        <div className="mt-4 text-center text-sm text-gray-600 border-t border-gray-100 pt-4">
-          {dict.auth.toSignupText}{' '}
-          <Link href={`/${lang}/signup`} className="text-blue-600 hover:underline font-medium">
-            {dict.auth.toSignupLink}
-          </Link>
-        </div>
-      </form>
-    </div>
-  )
-}
-</file>
-
 <file path="app/[lang]/page.tsx">
 import Link from 'next/link'
 import { getDictionary } from '@/utils/get-dictionary'
@@ -1878,111 +1719,6 @@ const handleCheckout = async (formData: FormData) => {
 }
 </file>
 
-<file path="app/[lang]/reset-password/page.tsx">
-import { createClient } from '@/utils/supabase/server'
-import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import { headers } from 'next/headers'
-import { getDictionary } from '@/utils/get-dictionary'
-import LanguageSwitcher from '@/app/components/LanguageSwitcher'
-
-export const runtime = 'edge';
-
-export default async function ResetPasswordPage({ 
-  params,
-  searchParams
-}: { 
-  params: Promise<{ lang: 'ja' | 'en' }>,
-  searchParams: Promise<{ message?: string }>
-}) {
-  const { lang } = await params;
-  const { message } = await searchParams;
-  const dict = await getDictionary(lang);
-
-  const requestReset = async (formData: FormData) => {
-    'use server'
-    const email = formData.get('email') as string
-    const currentLang = formData.get('lang') as string
-    
-    const headersList = await headers()
-    const origin = headersList.get('origin') || 'http://localhost:3000'
-    
-    const supabase = await createClient()
-
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${origin}/api/auth/callback?next=/${currentLang}/update-password`,
-    })
-
-    if (error) {
-      console.error('メール送信エラー:', error.message)
-      // ★追加：エラーメッセージに「rate limit」が含まれているか判定します
-      if (error.message.toLowerCase().includes('rate limit')) {
-        return redirect(`/${currentLang}/reset-password?message=rate_limit`)
-      }
-      return redirect(`/${currentLang}/reset-password?message=error`)
-    }
-    return redirect(`/${currentLang}/reset-password?message=success`)
-  }
-
-  return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 relative">
-      <div className="absolute top-6 right-6">
-        <LanguageSwitcher currentLang={lang} />
-      </div>
-
-      <form action={requestReset} className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
-        <input type="hidden" name="lang" value={lang} />
-        
-        <h1 className="text-2xl font-bold text-center mb-2 text-gray-800">{dict.auth.resetPasswordTitle}</h1>
-        <p className="text-sm text-gray-600 text-center mb-4">{dict.auth.resetPasswordDesc}</p>
-        
-        {/* 成功メッセージ */}
-        {message === 'success' && (
-          <div className="bg-green-50 text-green-700 p-4 rounded-md text-sm text-center mb-2 font-medium border border-green-200">
-            {dict.auth.resetLinkSent}
-          </div>
-        )}
-        
-        {/* ★追加：上限到達時のメッセージ（目立つようにオレンジ色にします） */}
-        {message === 'rate_limit' && (
-          <div className="bg-orange-50 text-orange-700 p-4 rounded-md text-sm text-center mb-2 font-medium border border-orange-200">
-            {dict.auth.rateLimitError}
-          </div>
-        )}
-
-        {/* 汎用エラーメッセージ */}
-        {message === 'error' && (
-          <div className="bg-red-50 text-red-600 p-4 rounded-md text-sm text-center mb-2 font-medium border border-red-200">
-            {dict.auth.generalError}
-          </div>
-        )}
-        
-        <label className="text-sm font-medium text-gray-700" htmlFor="email">{dict.auth.emailLabel}</label>
-        <input
-          className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          name="email"
-          type="email"
-          placeholder={dict.auth.emailPlaceholder}
-          required
-        />
-        
-        <div className="flex flex-col gap-2 mt-4">
-          <button type="submit" className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors font-medium">
-            {dict.auth.sendResetLink}
-          </button>
-        </div>
-
-        <div className="mt-4 text-center text-sm text-gray-600 border-t border-gray-100 pt-4">
-          <Link href={`/${lang}/login`} className="text-blue-600 hover:underline font-medium">
-            {dict.auth.backToLogin}
-          </Link>
-        </div>
-      </form>
-    </div>
-  )
-}
-</file>
-
 <file path="app/[lang]/section/[id]/page.tsx">
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
@@ -2064,196 +1800,6 @@ export default async function SectionPage({
           })}
         </div>
       </div>
-    </div>
-  )
-}
-</file>
-
-<file path="app/[lang]/signup/page.tsx">
-import { createClient } from '@/utils/supabase/server'
-import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import { headers } from 'next/headers' // ★URL取得のために追加
-import { getDictionary } from '@/utils/get-dictionary'
-import LanguageSwitcher from '@/app/components/LanguageSwitcher'
-import PasswordInput from '@/app/components/PasswordInput'
-
-export const runtime = 'edge';
-
-export default async function SignupPage({ 
-  params, 
-  searchParams 
-}: { 
-  params: Promise<{ lang: 'ja' | 'en' }>,
-  searchParams: Promise<{ message?: string }>
-}) {
-  const { lang } = await params;
-  const { message } = await searchParams;
-  const dict = await getDictionary(lang);
-
-  const signUp = async (formData: FormData) => {
-    'use server'
-    const email = formData.get('email') as string
-    const password = formData.get('password') as string
-    const currentLang = formData.get('lang') as string
-    
-    // ★追加：現在のサイトURL（origin）を取得します
-    const headersList = await headers()
-    const origin = headersList.get('origin') || 'http://localhost:3000'
-    
-    const supabase = await createClient()
-
-    // ★修正：signUp処理に options と emailRedirectTo を追加します
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${origin}/api/auth/callback?next=/${currentLang}/dashboard`,
-      }
-    })
-
-    if (error) {
-      return redirect(`/${currentLang}/signup?message=error`)
-    }
-    return redirect(`/${currentLang}/login?message=success`)
-  }
-
-  return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 relative">
-      <div className="absolute top-6 right-6">
-        <LanguageSwitcher currentLang={lang} />
-      </div>
-      
-      <form action={signUp} className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
-        <input type="hidden" name="lang" value={lang} />
-        
-        <h1 className="text-2xl font-bold text-center mb-4 text-gray-800">{dict.auth.signupTitle}</h1>
-        
-        {message === 'error' && (
-          <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm text-center mb-2">
-            {dict.auth.signupError}
-          </div>
-        )}
-        
-        <label className="text-sm font-medium text-gray-700" htmlFor="email">{dict.auth.emailLabel}</label>
-        <input
-          className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-sans"
-          name="email"
-          type="email"
-          placeholder={dict.auth.emailPlaceholder}
-          required
-        />
-        
-        <label className="text-sm font-medium text-gray-700 mt-2" htmlFor="password">{dict.auth.passwordLabel}</label>
-        <PasswordInput 
-          name="password"
-          placeholder={dict.auth.passwordPlaceholder}
-          required={true}
-          minLength={6}
-          showText={dict.auth.showPassword}
-          hideText={dict.auth.hidePassword}
-        />
-        
-        <div className="flex flex-col gap-2 mt-6">
-          <button type="submit" className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors font-medium">
-            {dict.auth.signupButton}
-          </button>
-        </div>
-
-        <div className="mt-4 text-center text-sm text-gray-600 border-t border-gray-100 pt-4">
-          {dict.auth.toLoginText}{' '}
-          <Link href={`/${lang}/login`} className="text-blue-600 hover:underline font-medium">
-            {dict.auth.toLoginLink}
-          </Link>
-        </div>
-      </form>
-    </div>
-  )
-}
-</file>
-
-<file path="app/[lang]/update-password/page.tsx">
-import { createClient } from '@/utils/supabase/server'
-import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import { headers } from 'next/headers'
-import { getDictionary } from '@/utils/get-dictionary'
-import LanguageSwitcher from '@/app/components/LanguageSwitcher'
-
-export const runtime = 'edge';
-
-export default async function ResetPasswordPage({ 
-  params,
-  searchParams
-}: { 
-  params: Promise<{ lang: 'ja' | 'en' }>,
-  searchParams: Promise<{ message?: string }>
-}) {
-  const { lang } = await params;
-  const { message } = await searchParams;
-  const dict = await getDictionary(lang);
-
-  const requestReset = async (formData: FormData) => {
-    'use server'
-    const email = formData.get('email') as string
-    const currentLang = formData.get('lang') as string
-    
-    // 現在のサイトURL（origin）を取得します
-    const headersList = await headers()
-    const origin = headersList.get('origin') || 'http://localhost:3000'
-    
-    const supabase = await createClient()
-
-    // メールに記載するリンク先を、先ほど作ったコールバックAPI経由に設定します
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${origin}/api/auth/callback?next=/${currentLang}/update-password`,
-    })
-
-    if (error) {
-      return redirect(`/${currentLang}/reset-password?message=error`)
-    }
-    return redirect(`/${currentLang}/reset-password?message=success`)
-  }
-
-  return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 relative">
-      <div className="absolute top-6 right-6">
-        <LanguageSwitcher currentLang={lang} />
-      </div>
-
-      <form action={requestReset} className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
-        <input type="hidden" name="lang" value={lang} />
-        
-        <h1 className="text-2xl font-bold text-center mb-2 text-gray-800">{dict.auth.resetPasswordTitle}</h1>
-        <p className="text-sm text-gray-600 text-center mb-4">{dict.auth.resetPasswordDesc}</p>
-        
-        {message === 'success' && (
-          <div className="bg-green-50 text-green-700 p-4 rounded-md text-sm text-center mb-2 font-medium">
-            {dict.auth.resetLinkSent}
-          </div>
-        )}
-        
-        <label className="text-sm font-medium text-gray-700" htmlFor="email">{dict.auth.emailLabel}</label>
-        <input
-          className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          name="email"
-          type="email"
-          placeholder={dict.auth.emailPlaceholder}
-          required
-        />
-        
-        <div className="flex flex-col gap-2 mt-4">
-          <button type="submit" className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors font-medium">
-            {dict.auth.sendResetLink}
-          </button>
-        </div>
-
-        <div className="mt-4 text-center text-sm text-gray-600 border-t border-gray-100 pt-4">
-          <Link href={`/${lang}/login`} className="text-blue-600 hover:underline font-medium">
-            {dict.auth.backToLogin}
-          </Link>
-        </div>
-      </form>
     </div>
   )
 }
@@ -2378,49 +1924,60 @@ export default async function VideoPage({
 }
 </file>
 
-<file path="tsconfig.json">
-{
-  "compilerOptions": {
-    "target": "ES2017",
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
-    ],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "noEmit": true,
-    "esModuleInterop": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "preserve",
-    "incremental": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
-    "paths": {
-      "@/*": [
-        "./*"
-      ]
-    }
-  },
-  "include": [
-    "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
-    ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts",
-    "**/*.mts"
-  ],
-  "exclude": [
-    "node_modules"
-  ]
+<file path="app/components/PasswordInput.tsx">
+'use client'
+
+import { useState } from 'react'
+
+export default function PasswordInput({ 
+  name, 
+  placeholder, 
+  required = false, 
+  minLength,
+  showText,
+  hideText
+}: { 
+  name: string, 
+  placeholder: string, 
+  required?: boolean, 
+  minLength?: number,
+  showText: string,
+  hideText: string
+}) {
+  const [show, setShow] = useState(false)
+
+  return (
+    <div className="relative w-full">
+      <input
+        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-16 font-sans text-gray-900 bg-white"
+        name={name}
+        type={show ? 'text' : 'password'}
+        placeholder={placeholder}
+        required={required}
+        minLength={minLength}
+      />
+      <button
+        type="button"
+        onClick={() => setShow(!show)}
+        className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors"
+      >
+        {show ? hideText : showText}
+      </button>
+    </div>
+  )
 }
+</file>
+
+<file path="next.config.ts">
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  serverActions: {
+    allowedOrigins: ['easy-japanese.shizuoka-connect.com']
+  }
+};
+
+export default nextConfig;
 </file>
 
 <file path=".gitignore">
@@ -2664,6 +2221,468 @@ const eslintConfig = defineConfig([
 ]);
 
 export default eslintConfig;
+</file>
+
+<file path="app/[lang]/login/page.tsx">
+import { createClient } from '@/utils/supabase/server'
+import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import { getDictionary } from '@/utils/get-dictionary'
+import LanguageSwitcher from '@/app/components/LanguageSwitcher'
+import PasswordInput from '@/app/components/PasswordInput'
+
+export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
+
+export default async function LoginPage({ 
+  params, 
+  searchParams 
+}: { 
+  params: Promise<{ lang: 'ja' | 'en' }>,
+  searchParams: Promise<{ message?: string }>
+}) {
+  const { lang } = await params;
+  const { message } = await searchParams;
+  const dict = await getDictionary(lang);
+
+  const signIn = async (formData: FormData) => {
+    'use server'
+    let redirectUrl = ''
+
+    try {
+      const email = formData.get('email') as string
+      const password = formData.get('password') as string
+      const currentLang = formData.get('lang') as string
+      const supabase = await createClient()
+
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
+
+      if (error) {
+        console.error('ログインエラー:', error.message)
+        redirectUrl = `/${currentLang}/login?message=error`
+      } else {
+        redirectUrl = `/${currentLang}/dashboard`
+      }
+    } catch (e: any) {
+      console.error('予期せぬシステムエラー:', e.message)
+      // エラーでクラッシュさせず、安全にエラーメッセージ付きのURLへ戻します
+      redirectUrl = `/ja/login?message=error`
+    }
+
+    // Next.jsの仕様上、redirectは必ずtry...catchブロックの外で実行します
+    if (redirectUrl) {
+      redirect(redirectUrl)
+    }
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 relative">
+      <div className="absolute top-6 right-6">
+        <LanguageSwitcher currentLang={lang} />
+      </div>
+
+      <form action={signIn} className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
+        <input type="hidden" name="lang" value={lang} />
+        
+        <h1 className="text-2xl font-bold text-center mb-4 text-gray-800">{dict.auth.loginTitle}</h1>
+        
+        {message === 'error' && (
+          <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm text-center mb-2">
+            {dict.auth.loginError}
+          </div>
+        )}
+        {message === 'success' && (
+          <div className="bg-green-50 text-green-700 p-3 rounded-md text-sm text-center mb-2">
+            {dict.auth.signupSuccess}
+          </div>
+        )}
+        
+        <label className="text-sm font-medium text-gray-700" htmlFor="email">{dict.auth.emailLabel}</label>
+        <input
+          className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white w-full"
+          name="email"
+          type="email"
+          placeholder={dict.auth.emailPlaceholder}
+          required
+        />
+        
+        <label className="text-sm font-medium text-gray-700 mt-2" htmlFor="password">{dict.auth.passwordLabel}</label>
+        <PasswordInput 
+          name="password"
+          placeholder={dict.auth.passwordPlaceholder}
+          required={true}
+          minLength={6}
+          showText={dict.auth.showPassword}
+          hideText={dict.auth.hidePassword}
+        />
+        
+        {/* ★追加：パスワードリセットへの導線 */}
+        <div className="flex justify-end mt-1">
+          <Link href={`/${lang}/reset-password`} className="text-xs text-blue-600 hover:underline font-medium">
+            {dict.auth.forgotPassword}
+          </Link>
+        </div>
+        
+        <div className="flex flex-col gap-2 mt-6">
+          <button type="submit" className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors font-medium">
+            {dict.auth.loginButton}
+          </button>
+        </div>
+
+        <div className="mt-4 text-center text-sm text-gray-600 border-t border-gray-100 pt-4">
+          {dict.auth.toSignupText}{' '}
+          <Link href={`/${lang}/signup`} className="text-blue-600 hover:underline font-medium">
+            {dict.auth.toSignupLink}
+          </Link>
+        </div>
+      </form>
+    </div>
+  )
+}
+</file>
+
+<file path="app/[lang]/reset-password/page.tsx">
+import { createClient } from '@/utils/supabase/server'
+import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import { headers } from 'next/headers'
+import { getDictionary } from '@/utils/get-dictionary'
+import LanguageSwitcher from '@/app/components/LanguageSwitcher'
+
+export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
+
+export default async function ResetPasswordPage({ 
+  params,
+  searchParams
+}: { 
+  params: Promise<{ lang: 'ja' | 'en' }>,
+  searchParams: Promise<{ message?: string }>
+}) {
+  const { lang } = await params;
+  const { message } = await searchParams;
+  const dict = await getDictionary(lang);
+
+  const requestReset = async (formData: FormData) => {
+    'use server'
+    const email = formData.get('email') as string
+    const currentLang = formData.get('lang') as string
+    
+    const headersList = await headers()
+    const origin = headersList.get('origin') || 'http://localhost:3000'
+    
+    const supabase = await createClient()
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${origin}/api/auth/callback?next=/${currentLang}/update-password`,
+    })
+
+    if (error) {
+      console.error('メール送信エラー:', error.message)
+      // ★追加：エラーメッセージに「rate limit」が含まれているか判定します
+      if (error.message.toLowerCase().includes('rate limit')) {
+        return redirect(`/${currentLang}/reset-password?message=rate_limit`)
+      }
+      return redirect(`/${currentLang}/reset-password?message=error`)
+    }
+    return redirect(`/${currentLang}/reset-password?message=success`)
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 relative">
+      <div className="absolute top-6 right-6">
+        <LanguageSwitcher currentLang={lang} />
+      </div>
+
+      <form action={requestReset} className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
+        <input type="hidden" name="lang" value={lang} />
+        
+        <h1 className="text-2xl font-bold text-center mb-2 text-gray-800">{dict.auth.resetPasswordTitle}</h1>
+        <p className="text-sm text-gray-600 text-center mb-4">{dict.auth.resetPasswordDesc}</p>
+        
+        {/* 成功メッセージ */}
+        {message === 'success' && (
+          <div className="bg-green-50 text-green-700 p-4 rounded-md text-sm text-center mb-2 font-medium border border-green-200">
+            {dict.auth.resetLinkSent}
+          </div>
+        )}
+        
+        {/* ★追加：上限到達時のメッセージ（目立つようにオレンジ色にします） */}
+        {message === 'rate_limit' && (
+          <div className="bg-orange-50 text-orange-700 p-4 rounded-md text-sm text-center mb-2 font-medium border border-orange-200">
+            {dict.auth.rateLimitError}
+          </div>
+        )}
+
+        {/* 汎用エラーメッセージ */}
+        {message === 'error' && (
+          <div className="bg-red-50 text-red-600 p-4 rounded-md text-sm text-center mb-2 font-medium border border-red-200">
+            {dict.auth.generalError}
+          </div>
+        )}
+        
+        <label className="text-sm font-medium text-gray-700" htmlFor="email">{dict.auth.emailLabel}</label>
+        <input
+          className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white w-full"
+          placeholder={dict.auth.emailPlaceholder}
+          required
+        />
+        
+        <div className="flex flex-col gap-2 mt-4">
+          <button type="submit" className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors font-medium">
+            {dict.auth.sendResetLink}
+          </button>
+        </div>
+
+        <div className="mt-4 text-center text-sm text-gray-600 border-t border-gray-100 pt-4">
+          <Link href={`/${lang}/login`} className="text-blue-600 hover:underline font-medium">
+            {dict.auth.backToLogin}
+          </Link>
+        </div>
+      </form>
+    </div>
+  )
+}
+</file>
+
+<file path="app/[lang]/update-password/page.tsx">
+import { createClient } from '@/utils/supabase/server'
+import { redirect } from 'next/navigation'
+import { getDictionary } from '@/utils/get-dictionary'
+import LanguageSwitcher from '@/app/components/LanguageSwitcher'
+import PasswordInput from '@/app/components/PasswordInput'
+
+export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
+
+export default async function UpdatePasswordPage({ 
+  params,
+  searchParams
+}: { 
+  params: Promise<{ lang: 'ja' | 'en' }>,
+  searchParams: Promise<{ message?: string }>
+}) {
+  const { lang } = await params;
+  const { message } = await searchParams;
+  const dict = await getDictionary(lang);
+
+  const updatePassword = async (formData: FormData) => {
+    'use server'
+    const password = formData.get('password') as string
+    const currentLang = formData.get('lang') as string
+    
+    const supabase = await createClient()
+
+    // 認証済みのセッション情報を使ってパスワードを更新します
+    const { error } = await supabase.auth.updateUser({
+      password: password
+    })
+
+    if (error) {
+      console.error('パスワード更新エラー:', error.message)
+      return redirect(`/${currentLang}/update-password?message=error`)
+    }
+    
+    // 更新成功時はダッシュボードへリダイレクトします
+    return redirect(`/${currentLang}/dashboard?message=password_updated`)
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 relative">
+      <div className="absolute top-6 right-6">
+        <LanguageSwitcher currentLang={lang} />
+      </div>
+
+      <form action={updatePassword} className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
+        <input type="hidden" name="lang" value={lang} />
+        
+        <h1 className="text-2xl font-bold text-center mb-2 text-gray-800">{dict.auth.updatePasswordTitle}</h1>
+        
+        {message === 'error' && (
+          <div className="bg-red-50 text-red-600 p-4 rounded-md text-sm text-center mb-2 font-medium border border-red-200">
+            {dict.auth.generalError}
+          </div>
+        )}
+        
+        <label className="text-sm font-medium text-gray-700 mt-2" htmlFor="password">{dict.auth.newPasswordLabel}</label>
+        <PasswordInput 
+          name="password"
+          placeholder={dict.auth.passwordPlaceholder}
+          required={true}
+          minLength={6}
+          showText={dict.auth.showPassword}
+          hideText={dict.auth.hidePassword}
+        />
+        
+        <div className="flex flex-col gap-2 mt-6">
+          <button type="submit" className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors font-medium">
+            {dict.auth.updatePasswordButton}
+          </button>
+        </div>
+      </form>
+    </div>
+  )
+}
+</file>
+
+<file path="tsconfig.json">
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": [
+        "./*"
+      ]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts",
+    "**/*.mts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}
+</file>
+
+<file path="app/[lang]/signup/page.tsx">
+import { createClient } from '@/utils/supabase/server'
+import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import { getDictionary } from '@/utils/get-dictionary'
+import LanguageSwitcher from '@/app/components/LanguageSwitcher'
+import PasswordInput from '@/app/components/PasswordInput'
+
+export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
+
+export default async function SignupPage({ 
+  params, 
+  searchParams 
+}: { 
+  params: Promise<{ lang: 'ja' | 'en' }>,
+  searchParams: Promise<{ message?: string }>
+}) {
+  const { lang } = await params;
+  const { message } = await searchParams;
+  const dict = await getDictionary(lang);
+
+  const signUp = async (formData: FormData) => {
+    'use server'
+    let redirectUrl = ''
+
+    try {
+      const email = formData.get('email') as string
+      const password = formData.get('password') as string
+      const currentLang = formData.get('lang') as string
+      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+      
+      const supabase = await createClient()
+
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: `${siteUrl}/api/auth/callback?next=/${currentLang}/dashboard`,
+        }
+      })
+
+      if (error) {
+        console.error('新規登録エラー:', error.message)
+        redirectUrl = `/${currentLang}/signup?message=error`
+      } else {
+        redirectUrl = `/${currentLang}/login?message=success`
+      }
+    } catch (e: any) {
+      console.error('予期せぬシステムエラー:', e.message)
+      redirectUrl = `/ja/signup?message=error`
+    }
+
+    if (redirectUrl) {
+      redirect(redirectUrl)
+    }
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 relative">
+      <div className="absolute top-6 right-6">
+        <LanguageSwitcher currentLang={lang} />
+      </div>
+      
+      <form action={signUp} className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
+        <input type="hidden" name="lang" value={lang} />
+        
+        <h1 className="text-2xl font-bold text-center mb-4 text-gray-800">{dict.auth.signupTitle}</h1>
+        
+        {message === 'error' && (
+          <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm text-center mb-2">
+            {dict.auth.signupError}
+          </div>
+        )}
+        
+        <label className="text-sm font-medium text-gray-700" htmlFor="email">{dict.auth.emailLabel}</label>
+        <input
+          className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-sans text-gray-900 bg-white"
+          name="email"
+          type="email"
+          placeholder={dict.auth.emailPlaceholder}
+          required
+        />
+        
+        <label className="text-sm font-medium text-gray-700 mt-2" htmlFor="password">{dict.auth.passwordLabel}</label>
+        <PasswordInput 
+          name="password"
+          placeholder={dict.auth.passwordPlaceholder}
+          required={true}
+          minLength={6}
+          showText={dict.auth.showPassword}
+          hideText={dict.auth.hidePassword}
+        />
+        
+        <div className="flex flex-col gap-2 mt-6">
+          <button type="submit" className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors font-medium">
+            {dict.auth.signupButton}
+          </button>
+        </div>
+
+        <div className="mt-4 text-center text-sm text-gray-600 border-t border-gray-100 pt-4">
+          {dict.auth.toLoginText}{' '}
+          <Link href={`/${lang}/login`} className="text-blue-600 hover:underline font-medium">
+            {dict.auth.toLoginLink}
+          </Link>
+        </div>
+      </form>
+    </div>
+  )
+}
 </file>
 
 <file path="package.json">

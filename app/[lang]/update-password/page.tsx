@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation'
 import { getDictionary } from '@/utils/get-dictionary'
 import LanguageSwitcher from '@/app/components/LanguageSwitcher'
 import PasswordInput from '@/app/components/PasswordInput'
+import { updatePasswordAction } from '@/app/actions/auth'
+
 
 export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
@@ -18,34 +20,13 @@ export default async function UpdatePasswordPage({
   const { message } = await searchParams;
   const dict = await getDictionary(lang);
 
-  const updatePassword = async (formData: FormData) => {
-    'use server'
-    const password = formData.get('password') as string
-    const currentLang = formData.get('lang') as string
-    
-    const supabase = await createClient()
-
-    // 認証済みのセッション情報を使ってパスワードを更新します
-    const { error } = await supabase.auth.updateUser({
-      password: password
-    })
-
-    if (error) {
-      console.error('パスワード更新エラー:', error.message)
-      return redirect(`/${currentLang}/update-password?message=error`)
-    }
-    
-    // 更新成功時はダッシュボードへリダイレクトします
-    return redirect(`/${currentLang}/dashboard?message=password_updated`)
-  }
-
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 relative">
       <div className="absolute top-6 right-6">
         <LanguageSwitcher currentLang={lang} />
       </div>
 
-      <form action={updatePassword} className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
+      <form action={updatePasswordAction} className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
         <input type="hidden" name="lang" value={lang} />
         
         <h1 className="text-2xl font-bold text-center mb-2 text-gray-800">{dict.auth.updatePasswordTitle}</h1>
