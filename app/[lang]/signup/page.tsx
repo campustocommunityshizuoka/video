@@ -1,7 +1,6 @@
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { headers } from 'next/headers' // ★URL取得のために追加
 import { getDictionary } from '@/utils/get-dictionary'
 import LanguageSwitcher from '@/app/components/LanguageSwitcher'
 import PasswordInput from '@/app/components/PasswordInput'
@@ -26,9 +25,8 @@ export default async function SignupPage({
     const currentLang = formData.get('lang') as string
     
     // ★追加：現在のサイトURL（origin）を取得します
-    const headersList = await headers()
-    const origin = headersList.get('origin') || 'http://localhost:3000'
-    
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+
     const supabase = await createClient()
 
     // ★修正：signUp処理に options と emailRedirectTo を追加します
@@ -36,7 +34,7 @@ export default async function SignupPage({
       email,
       password,
       options: {
-        emailRedirectTo: `${origin}/api/auth/callback?next=/${currentLang}/dashboard`,
+        emailRedirectTo: `${siteUrl}/api/auth/callback?next=/${currentLang}/dashboard`,
       }
     })
 
