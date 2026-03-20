@@ -1,7 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  serverActions: {
+    allowedOrigins: ['easy-japanese.shizuoka-connect.com']
+  }
 };
 
 export default nextConfig;

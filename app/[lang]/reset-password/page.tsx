@@ -78,9 +78,7 @@ export default async function ResetPasswordPage({
         
         <label className="text-sm font-medium text-gray-700" htmlFor="email">{dict.auth.emailLabel}</label>
         <input
-          className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          name="email"
-          type="email"
+          className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white w-full"
           placeholder={dict.auth.emailPlaceholder}
           required
         />

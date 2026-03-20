@@ -240,1133 +240,6 @@ export default async function AdminDashboard({ params }: { params: Promise<{ lan
 }
 </file>
 
-<file path="app/[lang]/dashboard/page.tsx">
-import { createClient } from '@/utils/supabase/server'
-import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import Stripe from 'stripe'
-import { getDictionary } from '@/utils/get-dictionary'
-import LanguageSwitcher from '@/app/components/LanguageSwitcher'
-
-type Video = { id: string; title: string; vimeo_id: string; thumbnail_url: string | null }
-
-export default async function DashboardPage({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }) {
-  const { lang } = await params;
-  const dict = await getDictionary(lang);
-  
-  const supabase = await createClient()
-
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect(`/${lang}/login`)
-
-  const isAdmin = user.email === process.env.ADMIN_EMAIL;
-
-  const { data: subscription } = await supabase
-    .from('subscriptions').select('*').eq('user_id', user.id).eq('status', 'active').limit(1).maybeSingle()
-
-  const { data: videos } = await supabase.from('videos').select('*')
-  
-  const { data: history } = await supabase
-    .from('viewing_history').select('vimeo_video_id').eq('user_id', user.id)
-  
-  const viewedIds = new Set(history?.map(h => h.vimeo_video_id) || [])
-
-  const { data: latestHistory } = await supabase
-    .from('viewing_history').select('vimeo_video_id').eq('user_id', user.id)
-    .order('viewed_at', { ascending: false }).limit(1).maybeSingle()
-
-  let lastWatchedVideo: Video | null = null
-  if (latestHistory && videos) {
-    lastWatchedVideo = videos.find(v => v.vimeo_id === latestHistory.vimeo_video_id) as Video || null
-  }
-
-  const { data: favoritesData } = await supabase
-    .from('favorites').select('vimeo_video_id').eq('user_id', user.id).order('created_at', { ascending: false })
-
-  const favoriteIds = new Set(favoritesData?.map(f => f.vimeo_video_id) || [])
-  const favoriteVideos = videos?.filter(v => favoriteIds.has(v.vimeo_id)) as Video[] || []
-
-  const groupedVideos: Record<string, Video[]> = {}
-  if (videos) {
-    videos.forEach((video) => {
-      const match = video.title.match(/^(\d+)-/)
-      const section = match ? match[1] : 'その他'
-      if (!groupedVideos[section]) groupedVideos[section] = []
-      groupedVideos[section].push(video as Video)
-    })
-  }
-
-  const sortedSections = Object.keys(groupedVideos).sort((a, b) => {
-    if (a === 'その他') return 1; if (b === 'その他') return -1;
-    return parseInt(a) - parseInt(b);
-  })
-
-  const sectionStats = sortedSections.map(section => {
-    const totalCount = groupedVideos[section].length
-    const viewedCount = groupedVideos[section].filter(v => viewedIds.has(v.vimeo_id)).length
-    const progress = totalCount > 0 ? Math.round((viewedCount / totalCount) * 100) : 0
-    return { section, totalCount, viewedCount, progress }
-  })
-
-  const getPlanName = (planType: string) => {
-    switch (planType) {
-      case 'light': return dict.dashboard.planLight
-      case 'standard': return dict.dashboard.planStandard
-      case 'premium': return dict.dashboard.planPremium
-      default: return dict.dashboard.planNone
-    }
-  }
-
-  const signOut = async (formData: FormData) => {
-    'use server'
-    const currentLang = formData.get('lang') as string
-    const supabaseClient = await createClient()
-    await supabaseClient.auth.signOut()
-    redirect(`/${currentLang}/login`)
-  }
-
-  const goToBillingPortal = async (formData: FormData) => {
-    'use server'
-    const currentLang = formData.get('lang') as string
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, { apiVersion: '2026-02-25.clover' })
-    if (!subscription) return
-    
-    const stripeSub = await stripe.subscriptions.retrieve(subscription.stripe_subscription_id)
-    const customerId = stripeSub.customer as string
-
-    // ★追加：ポータルを開く直前に、Stripe上の顧客の言語設定を現在の言語で上書き保存します
-    await stripe.customers.update(customerId, {
-      preferred_locales: [currentLang === 'ja' ? 'ja' : 'en']
-    });
-
-    const session = await stripe.billingPortal.sessions.create({ 
-      customer: customerId, 
-      return_url: `http://localhost:3000/${currentLang}/dashboard`,
-      locale: currentLang === 'ja' ? 'ja' : 'en' 
-    })
-    
-    if (session.url) redirect(session.url)
-  }
-
-
-
-  const VideoCard = ({ video, label }: { video: Video, label?: string }) => {
-    const isViewed = viewedIds.has(video.vimeo_id)
-    return (
-      <Link href={`/${lang}/video/${video.vimeo_id}`} className="block group">
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-lg transition-all hover:border-blue-300 flex items-center p-3 gap-4 relative">
-          <div className="w-32 aspect-video bg-gray-100 rounded-lg flex-shrink-0 relative overflow-hidden flex items-center justify-center">
-            {video.thumbnail_url ? (
-               <img src={video.thumbnail_url} alt={video.title} className="object-cover w-full h-full group-hover:scale-105 transition-transform" />
-            ) : (
-               <span className="text-gray-400 text-xs font-medium">Video</span>
-            )}
-            {isViewed && (
-              <div className="absolute top-1 right-1 bg-green-500 text-white text-[10px] px-1.5 py-0.5 rounded shadow-sm font-bold">✓</div>
-            )}
-          </div>
-          <div className="flex-grow">
-            {label && <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded mb-1 inline-block">{label}</span>}
-            <h3 className="font-bold text-gray-900 group-hover:text-blue-600 transition-colors line-clamp-2">{video.title}</h3>
-          </div>
-          <div className="pr-4 hidden sm:block">
-            <span className="text-blue-600 font-medium text-sm">{dict.dashboard.watch}</span>
-          </div>
-        </div>
-      </Link>
-    )
-  }
-
-  return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-8">
-      <div className="max-w-5xl mx-auto">
-        
-        {/* ヘッダー */}
-        <div className="flex justify-between items-center mb-8 bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-          <h1 className="text-2xl font-bold text-gray-800">{dict.dashboard.title}</h1>
-          
-          <div className="flex items-center gap-4">
-            <LanguageSwitcher currentLang={lang} />
-            {isAdmin && (
-              <Link href={`/${lang}/admin`} className="px-4 py-2 text-sm font-bold text-white bg-red-500 rounded-md hover:bg-red-600 transition-colors shadow-sm hidden sm:block">
-                {dict.dashboard.adminButton}
-              </Link>
-            )}
-            <form action={signOut}>
-              <input type="hidden" name="lang" value={lang} />
-              <button className="px-4 py-2 text-sm text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200">
-                {dict.dashboard.logoutButton}
-              </button>
-            </form>
-          </div>
-        </div>
-        
-        {/* ご契約状況 */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6 mb-8">
-          <p className="mb-4 text-gray-600">
-            {dict.dashboard.welcome}<span className="font-semibold text-gray-800">{user.email}</span>{dict.dashboard.honorific}
-          </p>
-          <div className="bg-gradient-to-r from-blue-50 border-l-4 border-blue-500 rounded-r-md p-6">
-            <h2 className="text-sm font-bold text-blue-800 mb-2 tracking-wider">{dict.dashboard.subscriptionStatus}</h2>
-            {subscription ? (
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <p className="text-2xl font-extrabold text-blue-900 mb-1">{getPlanName(subscription.plan_type)}</p>
-                  <p className="text-sm text-blue-700">
-                    {dict.dashboard.renewalDate}{new Date(subscription.current_period_end).toLocaleDateString(lang === 'ja' ? 'ja-JP' : 'en-US')}
-                  </p>
-                </div>
-                <form action={goToBillingPortal}>
-                  <input type="hidden" name="lang" value={lang} />
-                  <button type="submit" className="text-sm bg-white border border-blue-200 text-blue-700 px-5 py-2.5 rounded-md hover:bg-blue-50 font-medium shadow-sm">
-                    {dict.dashboard.manageSubscription}
-                  </button>
-                </form>
-              </div>
-            ) : (
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <p className="text-blue-800 font-medium">{dict.dashboard.noSubscription}</p>
-                <Link href={`/${lang}/pricing`} className="inline-block px-6 py-2.5 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 text-center">
-                  {dict.dashboard.choosePlan}
-                </Link>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* クイックアクセス */}
-        {(lastWatchedVideo || favoriteVideos.length > 0) && (
-          <div className="mb-12 grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {lastWatchedVideo && (
-              <div>
-                <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                  <span className="text-blue-600">▶</span> {dict.dashboard.continueWatching}
-                </h2>
-                <VideoCard video={lastWatchedVideo} label={dict.dashboard.recentlyWatched} />
-              </div>
-            )}
-            {favoriteVideos.length > 0 && (
-              <div>
-                <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                  <span className="text-pink-500">♥</span> {dict.dashboard.favorites}
-                </h2>
-                <div className="space-y-3">
-                  {favoriteVideos.slice(0, 3).map(video => (
-                    <VideoCard key={video.id} video={video} />
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* コース一覧（セクション一覧） */}
-        <h2 className="text-xl font-bold text-gray-800 mb-6 border-b border-gray-200 pb-2">{dict.dashboard.courseList}</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {sectionStats.map(({ section, totalCount, viewedCount, progress }) => (
-            <Link href={`/${lang}/section/${section}`} key={section} className="block group">
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-all hover:border-blue-300">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-bold text-gray-900 group-hover:text-blue-600">{dict.dashboard.section}{section}</h3>
-                  <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-md">{totalCount}{dict.dashboard.videosCount}</span>
-                </div>
-                <div className="w-full bg-gray-100 rounded-full h-2 mb-2">
-                  <div className="bg-blue-600 h-2 rounded-full transition-all duration-500" style={{ width: `${progress}%` }}></div>
-                </div>
-                <div className="flex justify-between text-xs text-gray-500 font-medium">
-                  <span>{dict.dashboard.progress}{progress}%</span>
-                  <span>{viewedCount} / {totalCount}{dict.dashboard.completed}</span>
-                </div>
-              </div>
-            </Link>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
-</file>
-
-<file path="app/[lang]/layout.tsx">
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import "../globals.css";
-import { getDictionary } from '@/utils/get-dictionary';
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-export async function generateMetadata({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }): Promise<Metadata> {
-  const { lang } = await params;
-  const dict = await getDictionary(lang);
-  
-  return {
-    title: dict.metadata.title,
-    description: dict.metadata.description,
-  };
-}
-
-export default async function RootLayout({
-  children,
-  params,
-}: Readonly<{
-  children: React.ReactNode;
-  params: Promise<{ lang: 'ja' | 'en' }>;
-}>) {
-  const { lang } = await params;
-  
-  return (
-    <html lang={lang}>
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        {children}
-      </body>
-    </html>
-  );
-}
-</file>
-
-<file path="app/[lang]/login/page.tsx">
-import { createClient } from '@/utils/supabase/server'
-import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import { getDictionary } from '@/utils/get-dictionary'
-import LanguageSwitcher from '@/app/components/LanguageSwitcher'
-import PasswordInput from '@/app/components/PasswordInput'
-
-export default async function LoginPage({ 
-  params, 
-  searchParams 
-}: { 
-  params: Promise<{ lang: 'ja' | 'en' }>,
-  searchParams: Promise<{ message?: string }>
-}) {
-  const { lang } = await params;
-  const { message } = await searchParams;
-  const dict = await getDictionary(lang);
-
-  const signIn = async (formData: FormData) => {
-    'use server'
-    const email = formData.get('email') as string
-    const password = formData.get('password') as string
-    const currentLang = formData.get('lang') as string
-    const supabase = await createClient()
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-
-    if (error) {
-      return redirect(`/${currentLang}/login?message=error`)
-    }
-    return redirect(`/${currentLang}/dashboard`)
-  }
-
-  return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 relative">
-      <div className="absolute top-6 right-6">
-        <LanguageSwitcher currentLang={lang} />
-      </div>
-
-      <form action={signIn} className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
-        <input type="hidden" name="lang" value={lang} />
-        
-        <h1 className="text-2xl font-bold text-center mb-4 text-gray-800">{dict.auth.loginTitle}</h1>
-        
-        {message === 'error' && (
-          <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm text-center mb-2">
-            {dict.auth.loginError}
-          </div>
-        )}
-        {message === 'success' && (
-          <div className="bg-green-50 text-green-700 p-3 rounded-md text-sm text-center mb-2">
-            {dict.auth.signupSuccess}
-          </div>
-        )}
-        
-        <label className="text-sm font-medium text-gray-700" htmlFor="email">{dict.auth.emailLabel}</label>
-        <input
-          className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          name="email"
-          type="email"
-          placeholder={dict.auth.emailPlaceholder}
-          required
-        />
-        
-        <label className="text-sm font-medium text-gray-700 mt-2" htmlFor="password">{dict.auth.passwordLabel}</label>
-        <PasswordInput 
-          name="password"
-          placeholder={dict.auth.passwordPlaceholder}
-          required={true}
-          minLength={6}
-          showText={dict.auth.showPassword}
-          hideText={dict.auth.hidePassword}
-        />
-        
-        {/* ★追加：パスワードリセットへの導線 */}
-        <div className="flex justify-end mt-1">
-          <Link href={`/${lang}/reset-password`} className="text-xs text-blue-600 hover:underline font-medium">
-            {dict.auth.forgotPassword}
-          </Link>
-        </div>
-        
-        <div className="flex flex-col gap-2 mt-6">
-          <button type="submit" className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors font-medium">
-            {dict.auth.loginButton}
-          </button>
-        </div>
-
-        <div className="mt-4 text-center text-sm text-gray-600 border-t border-gray-100 pt-4">
-          {dict.auth.toSignupText}{' '}
-          <Link href={`/${lang}/signup`} className="text-blue-600 hover:underline font-medium">
-            {dict.auth.toSignupLink}
-          </Link>
-        </div>
-      </form>
-    </div>
-  )
-}
-</file>
-
-<file path="app/[lang]/page.tsx">
-import Link from 'next/link'
-import { getDictionary } from '@/utils/get-dictionary'
-import LanguageSwitcher from '@/app/components/LanguageSwitcher'
-
-export default async function HomePage({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }) {
-  const { lang } = await params;
-  const dict = await getDictionary(lang);
-
-  return (
-    <div className="min-h-screen bg-white font-sans text-gray-900">
-      
-      {/* ナビゲーションバー */}
-      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-xl leading-none">あ</span>
-            </div>
-            <span className="text-xl font-bold tracking-tight text-gray-800">{dict.home.title}</span>
-          </div>
-          <nav className="flex items-center">
-            <LanguageSwitcher currentLang={lang} />
-            <Link 
-              href={`/${lang}/login`} 
-              className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors mr-6"
-            >
-              {dict.home.login}
-            </Link>
-            <Link 
-              href={`/${lang}/login`} 
-              className="text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md transition-colors shadow-sm"
-            >
-              {dict.home.startFree}
-            </Link>
-          </nav>
-
-        </div>
-      </header>
-
-      <main>
-        {/* ヒーローセクション（ファーストビュー） */}
-        <section className="relative pt-24 pb-32 overflow-hidden bg-gradient-to-b from-blue-50 to-white">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
-            <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight text-gray-900 mb-6 leading-tight">
-              {dict.home.heroTitle1}<br className="hidden md:block" />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-cyan-500">
-                {dict.home.heroTitle2}
-              </span>
-            </h1>
-            <p className="mt-4 text-xl text-gray-600 max-w-2xl mx-auto mb-10">
-              {dict.home.heroDescription}
-            </p>
-            <div className="flex flex-col sm:flex-row justify-center gap-4">
-              <Link 
-                href={`/${lang}/login`} 
-                className="px-8 py-4 text-base font-bold text-white bg-blue-600 rounded-full hover:bg-blue-700 shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1"
-              >
-                {dict.home.startNow}
-              </Link>
-              <a 
-                href="#pricing" 
-                className="px-8 py-4 text-base font-bold text-blue-700 bg-blue-100 rounded-full hover:bg-blue-200 transition-all"
-              >
-                {dict.home.viewPricing}
-              </a>
-            </div>
-          </div>
-          
-          {/* 背景の装飾 */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-200/30 rounded-full blur-3xl -z-10 pointer-events-none"></div>
-        </section>
-
-        {/* 特徴・メリットセクション */}
-        <section className="py-20 bg-white">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="text-center mb-16">
-              <h2 className="text-3xl font-bold text-gray-900 mb-4">{dict.home.reasonsTitle}</h2>
-              <p className="text-gray-600">{dict.home.reasonsDesc}</p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
-              {/* 特徴1 */}
-              <div className="bg-gray-50 rounded-2xl p-8 border border-gray-100 hover:shadow-md transition-shadow">
-                <div className="w-14 h-14 bg-blue-100 rounded-xl flex items-center justify-center mb-6">
-                  <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-3">{dict.home.feature1Title}</h3>
-                <p className="text-gray-600">{dict.home.feature1Desc}</p>
-              </div>
-
-              {/* 特徴2 */}
-              <div className="bg-gray-50 rounded-2xl p-8 border border-gray-100 hover:shadow-md transition-shadow">
-                <div className="w-14 h-14 bg-cyan-100 rounded-xl flex items-center justify-center mb-6">
-                  <svg className="w-8 h-8 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-3">{dict.home.feature2Title}</h3>
-                <p className="text-gray-600">{dict.home.feature2Desc}</p>
-              </div>
-
-              {/* 特徴3 */}
-              <div className="bg-gray-50 rounded-2xl p-8 border border-gray-100 hover:shadow-md transition-shadow">
-                <div className="w-14 h-14 bg-indigo-100 rounded-xl flex items-center justify-center mb-6">
-                  <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-3">{dict.home.feature3Title}</h3>
-                <p className="text-gray-600">{dict.home.feature3Desc}</p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* 料金プランプレビューセクション */}
-        <section id="pricing" className="py-20 bg-gray-50 border-t border-gray-100">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="text-center mb-16">
-              <h2 className="text-3xl font-bold text-gray-900 mb-4">{dict.home.pricingTitle}</h2>
-              <p className="text-gray-600">{dict.home.pricingDesc}</p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-              {/* プラン1 */}
-              <div className="bg-white rounded-2xl p-8 border border-gray-200 shadow-sm text-center">
-                <h3 className="text-lg font-medium text-gray-500 mb-2">{dict.home.planLight}</h3>
-                <p className="text-4xl font-extrabold text-gray-900 mb-6">¥1,000<span className="text-base font-normal text-gray-500">{dict.home.perMonth}</span></p>
-                <ul className="text-left space-y-3 mb-8 text-gray-600">
-                  <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> {dict.home.lightFeature1}</li>
-                  <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> {dict.home.featureProgress}</li>
-                </ul>
-              </div>
-              
-              {/* プラン2（おすすめ） */}
-              <div className="bg-white rounded-2xl p-8 border-2 border-blue-500 shadow-xl text-center relative transform md:-translate-y-4">
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-blue-500 text-white px-4 py-1 rounded-full text-sm font-bold tracking-wide">{dict.home.mostPopular}</div>
-                <h3 className="text-lg font-medium text-blue-600 mb-2">{dict.home.planStandard}</h3>
-                <p className="text-4xl font-extrabold text-gray-900 mb-6">¥3,000<span className="text-base font-normal text-gray-500">{dict.home.perMonth}</span></p>
-                <ul className="text-left space-y-3 mb-8 text-gray-600">
-                  <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> {dict.home.standardFeature1}</li>
-                  <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> {dict.home.featureProgress}</li>
-                  <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> {dict.home.featureAllAccess}</li>
-                </ul>
-              </div>
-
-              {/* プラン3 */}
-              <div className="bg-gray-900 rounded-2xl p-8 border border-gray-800 shadow-sm text-center text-white">
-                <h3 className="text-lg font-medium text-gray-400 mb-2">{dict.home.planPremium}</h3>
-                <p className="text-4xl font-extrabold text-white mb-6">¥5,000<span className="text-base font-normal text-gray-400">{dict.home.perMonth}</span></p>
-                <ul className="text-left space-y-3 mb-8 text-gray-300">
-                  <li className="flex items-center"><span className="text-blue-400 mr-2">✓</span> {dict.home.premiumFeature1}</li>
-                  <li className="flex items-center"><span className="text-blue-400 mr-2">✓</span> {dict.home.featureProgress}</li>
-                  <li className="flex items-center"><span className="text-blue-400 mr-2">✓</span> {dict.home.featureAllAccess}</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* CTA（コールトゥアクション）セクション */}
-        <section className="py-20 bg-blue-600 text-white text-center">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h2 className="text-3xl font-bold mb-6">{dict.home.ctaTitle}</h2>
-            <p className="text-blue-100 text-lg mb-10">
-              {dict.home.ctaDesc}
-            </p>
-            <Link 
-              href={`/${lang}/login`} 
-              className="inline-block px-10 py-4 text-lg font-bold text-blue-600 bg-white rounded-full hover:bg-gray-50 shadow-lg transition-colors"
-            >
-              {dict.home.createFreeAccount}
-            </Link>
-          </div>
-        </section>
-      </main>
-
-      {/* フッター */}
-      <footer className="bg-gray-50 py-12 border-t border-gray-200">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-gray-400 rounded-md flex items-center justify-center">
-              <span className="text-white font-bold text-xs leading-none">あ</span>
-            </div>
-            <span className="text-lg font-bold text-gray-600">{dict.home.title}</span>
-          </div>
-          <p className="text-gray-400 text-sm">
-            © {new Date().getFullYear()} {dict.home.footerRights}
-          </p>
-        </div>
-      </footer>
-
-    </div>
-  )
-}
-</file>
-
-<file path="app/[lang]/pricing/page.tsx">
-import { createClient } from '@/utils/supabase/server'
-import { redirect } from 'next/navigation'
-import Stripe from 'stripe'
-import { getDictionary } from '@/utils/get-dictionary'
-import LanguageSwitcher from '@/app/components/LanguageSwitcher'
-
-export default async function PricingPage({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }) {
-  const { lang } = await params
-  const dict = await getDictionary(lang)
-
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect(`/${lang}/login`)
-  }
-
-  const { data: existingSubscription } = await supabase
-    .from('subscriptions').select('*').eq('user_id', user.id).eq('status', 'active').limit(1).maybeSingle()
-
-  // ★将来のための準備：言語（通貨）に応じた価格IDを返す関数
-  const getPriceId = (plan: 'light' | 'standard' | 'premium', currentLang: string) => {
-    /* * 将来、StripeダッシュボードでUSD用の価格を作成したら、
-     * ここで process.env.STRIPE_PRICE_ID_LIGHT_USD などを返すように変更してください。
-     * 現在はプレースホルダーとして、どちらの言語でも既存のIDを返しています。
-     */
-    if (plan === 'light') return process.env.STRIPE_PRICE_ID_LIGHT;
-    if (plan === 'standard') return process.env.STRIPE_PRICE_ID_STANDARD;
-    if (plan === 'premium') return process.env.STRIPE_PRICE_ID_PREMIUM;
-  }
-
-const handleCheckout = async (formData: FormData) => {
-    'use server'
-    const currentLang = formData.get('lang') as string
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, { apiVersion: '2026-02-25.clover' })
-
-    const supabaseAdmin = await createClient()
-    const { data: checkSub } = await supabaseAdmin
-      .from('subscriptions').select('id').eq('user_id', user.id).eq('status', 'active').limit(1)
-
-    if (checkSub && checkSub.length > 0) {
-      const errorMsg = currentLang === 'ja' ? 'すでにプランを契約中のため、追加購入はできません' : 'You are already subscribed to a plan. Additional purchases are not allowed.'
-      redirect(`/${currentLang}/dashboard?message=` + encodeURIComponent(errorMsg))
-    }
-
-    const priceId = formData.get('priceId') as string
-
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items: [{ price: priceId, quantity: 1 }],
-      mode: 'subscription',
-      success_url: `http://localhost:3000/${currentLang}/dashboard?success=true`,
-      cancel_url: `http://localhost:3000/${currentLang}/pricing?canceled=true`,
-      customer_email: user.email,
-      // ★確認：決済画面の表示言語を強制的に指定します
-      locale: currentLang === 'ja' ? 'ja' : 'en',
-      metadata: { userId: user.id },
-    })
-
-    if (session.url) redirect(session.url)
-  }
-
-  const isSubscribed = !!existingSubscription
-
-  return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8 relative">
-      <div className="absolute top-6 right-6">
-        <LanguageSwitcher currentLang={lang} />
-      </div>
-
-      <div className="max-w-7xl mx-auto mt-8">
-        <div className="text-center">
-          <h2 className="text-3xl font-extrabold text-gray-900 sm:text-4xl">{dict.pricing.title}</h2>
-          <p className="mt-4 text-xl text-gray-600">{dict.pricing.subtitle}</p>
-        </div>
-
-        {isSubscribed && (
-          <div className="mt-8 max-w-3xl mx-auto bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 rounded shadow-sm">
-            <p className="font-bold">{dict.pricing.noticeTitle}</p>
-            <p>{dict.pricing.noticeMessage}</p>
-          </div>
-        )}
-
-        <div className="mt-12 space-y-4 sm:space-y-0 sm:grid sm:grid-cols-3 sm:gap-6 lg:max-w-4xl lg:mx-auto xl:max-w-none xl:mx-0 xl:grid-cols-3">
-          
-          {/* ライトプラン */}
-          <div className="border border-gray-200 rounded-lg shadow-sm divide-y divide-gray-200 bg-white">
-            <div className="p-6">
-              <h3 className="text-lg leading-6 font-medium text-gray-900">{dict.pricing.planLight}</h3>
-              <p className="mt-8">
-                <span className="text-4xl font-extrabold text-gray-900">{dict.pricing.priceLight}</span>
-                <span className="text-base font-medium text-gray-500">{dict.pricing.perMonth}</span>
-              </p>
-              <form action={handleCheckout} className="mt-8">
-                <input type="hidden" name="lang" value={lang} />
-                <input type="hidden" name="priceId" value={getPriceId('light', lang)} />
-                <button 
-                  type="submit" 
-                  disabled={isSubscribed}
-                  className={`w-full text-white rounded-md py-2 text-sm font-semibold transition-colors ${
-                    isSubscribed ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
-                  }`}
-                >
-                  {isSubscribed ? dict.pricing.subscribed : dict.pricing.selectPlan}
-                </button>
-              </form>
-            </div>
-          </div>
-
-          {/* スタンダードプラン */}
-          <div className="border border-blue-500 rounded-lg shadow-md divide-y divide-gray-200 bg-white relative">
-            <div className="p-6">
-              <h3 className="text-lg leading-6 font-medium text-gray-900">{dict.pricing.planStandard}</h3>
-              <p className="mt-8">
-                <span className="text-4xl font-extrabold text-gray-900">{dict.pricing.priceStandard}</span>
-                <span className="text-base font-medium text-gray-500">{dict.pricing.perMonth}</span>
-              </p>
-              <form action={handleCheckout} className="mt-8">
-                <input type="hidden" name="lang" value={lang} />
-                <input type="hidden" name="priceId" value={getPriceId('standard', lang)} />
-                <button 
-                  type="submit" 
-                  disabled={isSubscribed}
-                  className={`w-full text-white rounded-md py-2 text-sm font-semibold transition-colors ${
-                    isSubscribed ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'
-                  }`}
-                >
-                  {isSubscribed ? dict.pricing.subscribed : dict.pricing.selectPlan}
-                </button>
-              </form>
-            </div>
-          </div>
-
-          {/* プレミアムプラン */}
-          <div className="border border-gray-200 rounded-lg shadow-sm divide-y divide-gray-200 bg-white">
-            <div className="p-6">
-              <h3 className="text-lg leading-6 font-medium text-gray-900">{dict.pricing.planPremium}</h3>
-              <p className="mt-8">
-                <span className="text-4xl font-extrabold text-gray-900">{dict.pricing.pricePremium}</span>
-                <span className="text-base font-medium text-gray-500">{dict.pricing.perMonth}</span>
-              </p>
-              <form action={handleCheckout} className="mt-8">
-                <input type="hidden" name="lang" value={lang} />
-                <input type="hidden" name="priceId" value={getPriceId('premium', lang)} />
-                <button 
-                  type="submit" 
-                  disabled={isSubscribed}
-                  className={`w-full text-white rounded-md py-2 text-sm font-semibold transition-colors ${
-                    isSubscribed ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-800 hover:bg-gray-900'
-                  }`}
-                >
-                  {isSubscribed ? dict.pricing.subscribed : dict.pricing.selectPlan}
-                </button>
-              </form>
-            </div>
-          </div>
-
-        </div>
-      </div>
-    </div>
-  )
-}
-</file>
-
-<file path="app/[lang]/reset-password/page.tsx">
-import { createClient } from '@/utils/supabase/server'
-import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import { headers } from 'next/headers'
-import { getDictionary } from '@/utils/get-dictionary'
-import LanguageSwitcher from '@/app/components/LanguageSwitcher'
-
-export default async function ResetPasswordPage({ 
-  params,
-  searchParams
-}: { 
-  params: Promise<{ lang: 'ja' | 'en' }>,
-  searchParams: Promise<{ message?: string }>
-}) {
-  const { lang } = await params;
-  const { message } = await searchParams;
-  const dict = await getDictionary(lang);
-
-  const requestReset = async (formData: FormData) => {
-    'use server'
-    const email = formData.get('email') as string
-    const currentLang = formData.get('lang') as string
-    
-    const headersList = await headers()
-    const origin = headersList.get('origin') || 'http://localhost:3000'
-    
-    const supabase = await createClient()
-
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${origin}/api/auth/callback?next=/${currentLang}/update-password`,
-    })
-
-    if (error) {
-      console.error('メール送信エラー:', error.message)
-      // ★追加：エラーメッセージに「rate limit」が含まれているか判定します
-      if (error.message.toLowerCase().includes('rate limit')) {
-        return redirect(`/${currentLang}/reset-password?message=rate_limit`)
-      }
-      return redirect(`/${currentLang}/reset-password?message=error`)
-    }
-    return redirect(`/${currentLang}/reset-password?message=success`)
-  }
-
-  return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 relative">
-      <div className="absolute top-6 right-6">
-        <LanguageSwitcher currentLang={lang} />
-      </div>
-
-      <form action={requestReset} className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
-        <input type="hidden" name="lang" value={lang} />
-        
-        <h1 className="text-2xl font-bold text-center mb-2 text-gray-800">{dict.auth.resetPasswordTitle}</h1>
-        <p className="text-sm text-gray-600 text-center mb-4">{dict.auth.resetPasswordDesc}</p>
-        
-        {/* 成功メッセージ */}
-        {message === 'success' && (
-          <div className="bg-green-50 text-green-700 p-4 rounded-md text-sm text-center mb-2 font-medium border border-green-200">
-            {dict.auth.resetLinkSent}
-          </div>
-        )}
-        
-        {/* ★追加：上限到達時のメッセージ（目立つようにオレンジ色にします） */}
-        {message === 'rate_limit' && (
-          <div className="bg-orange-50 text-orange-700 p-4 rounded-md text-sm text-center mb-2 font-medium border border-orange-200">
-            {dict.auth.rateLimitError}
-          </div>
-        )}
-
-        {/* 汎用エラーメッセージ */}
-        {message === 'error' && (
-          <div className="bg-red-50 text-red-600 p-4 rounded-md text-sm text-center mb-2 font-medium border border-red-200">
-            {dict.auth.generalError}
-          </div>
-        )}
-        
-        <label className="text-sm font-medium text-gray-700" htmlFor="email">{dict.auth.emailLabel}</label>
-        <input
-          className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          name="email"
-          type="email"
-          placeholder={dict.auth.emailPlaceholder}
-          required
-        />
-        
-        <div className="flex flex-col gap-2 mt-4">
-          <button type="submit" className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors font-medium">
-            {dict.auth.sendResetLink}
-          </button>
-        </div>
-
-        <div className="mt-4 text-center text-sm text-gray-600 border-t border-gray-100 pt-4">
-          <Link href={`/${lang}/login`} className="text-blue-600 hover:underline font-medium">
-            {dict.auth.backToLogin}
-          </Link>
-        </div>
-      </form>
-    </div>
-  )
-}
-</file>
-
-<file path="app/[lang]/section/[id]/page.tsx">
-import { createClient } from '@/utils/supabase/server'
-import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import { getDictionary } from '@/utils/get-dictionary'
-import LanguageSwitcher from '@/app/components/LanguageSwitcher'
-
-export default async function SectionPage({ 
-  params 
-}: { 
-  params: Promise<{ lang: 'ja' | 'en', id: string }> 
-}) {
-  const { lang, id: sectionId } = await params
-  const dict = await getDictionary(lang)
-
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect(`/${lang}/login`)
-
-  const { data: videos } = await supabase
-    .from('videos').select('*').like('title', `${sectionId}-%`)
-
-  const sortedVideos = videos?.sort((a, b) => {
-    const aNum = parseInt(a.title.match(/-(\d+)/)?.[1] || '0')
-    const bNum = parseInt(b.title.match(/-(\d+)/)?.[1] || '0')
-    return aNum - bNum
-  }) || []
-
-  const { data: history } = await supabase
-    .from('viewing_history').select('vimeo_video_id').eq('user_id', user.id)
-  
-  const viewedIds = new Set(history?.map(h => h.vimeo_video_id) || [])
-
-  return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-8 relative">
-      <div className="absolute top-6 right-6">
-        <LanguageSwitcher currentLang={lang} />
-      </div>
-
-      <div className="max-w-6xl mx-auto mt-8">
-        <div className="mb-8">
-          <Link href={`/${lang}/dashboard`} className="text-blue-600 hover:underline text-sm mb-4 inline-block">
-            {dict.section.backToDashboard}
-          </Link>
-          <h1 className="text-2xl font-bold text-gray-800">
-            {dict.section.title.replace('{id}', sectionId)}
-          </h1>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {sortedVideos.map((video) => {
-            const isViewed = viewedIds.has(video.vimeo_id)
-            return (
-              <div key={video.id} className="bg-white rounded-lg border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">
-                <div className="aspect-video bg-gray-100 flex items-center justify-center relative">
-                  {video.thumbnail_url ? (
-                    <img src={video.thumbnail_url} alt={video.title} className="object-cover w-full h-full" />
-                  ) : (
-                    <span className="text-gray-400 font-medium">Video</span>
-                  )}
-                  {isViewed && (
-                    <div className="absolute top-2 right-2 bg-green-500 text-white text-xs px-2 py-1 rounded shadow-sm font-bold">
-                      {dict.section.viewed}
-                    </div>
-                  )}
-                </div>
-                <div className="p-4 flex flex-col justify-between">
-                  <h3 className="font-bold text-gray-900 mb-4">{video.title}</h3>
-                  <Link href={`/${lang}/video/${video.vimeo_id}`} className={`block w-full text-center px-4 py-2 font-medium text-sm rounded-md transition-colors ${
-                    isViewed ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white'
-                  }`}>
-                    {isViewed ? dict.section.watchAgain : dict.section.watch}
-                  </Link>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-    </div>
-  )
-}
-</file>
-
-<file path="app/[lang]/signup/page.tsx">
-import { createClient } from '@/utils/supabase/server'
-import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import { headers } from 'next/headers' // ★URL取得のために追加
-import { getDictionary } from '@/utils/get-dictionary'
-import LanguageSwitcher from '@/app/components/LanguageSwitcher'
-import PasswordInput from '@/app/components/PasswordInput'
-
-export default async function SignupPage({ 
-  params, 
-  searchParams 
-}: { 
-  params: Promise<{ lang: 'ja' | 'en' }>,
-  searchParams: Promise<{ message?: string }>
-}) {
-  const { lang } = await params;
-  const { message } = await searchParams;
-  const dict = await getDictionary(lang);
-
-  const signUp = async (formData: FormData) => {
-    'use server'
-    const email = formData.get('email') as string
-    const password = formData.get('password') as string
-    const currentLang = formData.get('lang') as string
-    
-    // ★追加：現在のサイトURL（origin）を取得します
-    const headersList = await headers()
-    const origin = headersList.get('origin') || 'http://localhost:3000'
-    
-    const supabase = await createClient()
-
-    // ★修正：signUp処理に options と emailRedirectTo を追加します
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${origin}/api/auth/callback?next=/${currentLang}/dashboard`,
-      }
-    })
-
-    if (error) {
-      return redirect(`/${currentLang}/signup?message=error`)
-    }
-    return redirect(`/${currentLang}/login?message=success`)
-  }
-
-  return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 relative">
-      <div className="absolute top-6 right-6">
-        <LanguageSwitcher currentLang={lang} />
-      </div>
-      
-      <form action={signUp} className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
-        <input type="hidden" name="lang" value={lang} />
-        
-        <h1 className="text-2xl font-bold text-center mb-4 text-gray-800">{dict.auth.signupTitle}</h1>
-        
-        {message === 'error' && (
-          <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm text-center mb-2">
-            {dict.auth.signupError}
-          </div>
-        )}
-        
-        <label className="text-sm font-medium text-gray-700" htmlFor="email">{dict.auth.emailLabel}</label>
-        <input
-          className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-sans"
-          name="email"
-          type="email"
-          placeholder={dict.auth.emailPlaceholder}
-          required
-        />
-        
-        <label className="text-sm font-medium text-gray-700 mt-2" htmlFor="password">{dict.auth.passwordLabel}</label>
-        <PasswordInput 
-          name="password"
-          placeholder={dict.auth.passwordPlaceholder}
-          required={true}
-          minLength={6}
-          showText={dict.auth.showPassword}
-          hideText={dict.auth.hidePassword}
-        />
-        
-        <div className="flex flex-col gap-2 mt-6">
-          <button type="submit" className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors font-medium">
-            {dict.auth.signupButton}
-          </button>
-        </div>
-
-        <div className="mt-4 text-center text-sm text-gray-600 border-t border-gray-100 pt-4">
-          {dict.auth.toLoginText}{' '}
-          <Link href={`/${lang}/login`} className="text-blue-600 hover:underline font-medium">
-            {dict.auth.toLoginLink}
-          </Link>
-        </div>
-      </form>
-    </div>
-  )
-}
-</file>
-
-<file path="app/[lang]/update-password/page.tsx">
-import { createClient } from '@/utils/supabase/server'
-import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import { headers } from 'next/headers'
-import { getDictionary } from '@/utils/get-dictionary'
-import LanguageSwitcher from '@/app/components/LanguageSwitcher'
-
-export default async function ResetPasswordPage({ 
-  params,
-  searchParams
-}: { 
-  params: Promise<{ lang: 'ja' | 'en' }>,
-  searchParams: Promise<{ message?: string }>
-}) {
-  const { lang } = await params;
-  const { message } = await searchParams;
-  const dict = await getDictionary(lang);
-
-  const requestReset = async (formData: FormData) => {
-    'use server'
-    const email = formData.get('email') as string
-    const currentLang = formData.get('lang') as string
-    
-    // 現在のサイトURL（origin）を取得します
-    const headersList = await headers()
-    const origin = headersList.get('origin') || 'http://localhost:3000'
-    
-    const supabase = await createClient()
-
-    // メールに記載するリンク先を、先ほど作ったコールバックAPI経由に設定します
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${origin}/api/auth/callback?next=/${currentLang}/update-password`,
-    })
-
-    if (error) {
-      return redirect(`/${currentLang}/reset-password?message=error`)
-    }
-    return redirect(`/${currentLang}/reset-password?message=success`)
-  }
-
-  return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 relative">
-      <div className="absolute top-6 right-6">
-        <LanguageSwitcher currentLang={lang} />
-      </div>
-
-      <form action={requestReset} className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
-        <input type="hidden" name="lang" value={lang} />
-        
-        <h1 className="text-2xl font-bold text-center mb-2 text-gray-800">{dict.auth.resetPasswordTitle}</h1>
-        <p className="text-sm text-gray-600 text-center mb-4">{dict.auth.resetPasswordDesc}</p>
-        
-        {message === 'success' && (
-          <div className="bg-green-50 text-green-700 p-4 rounded-md text-sm text-center mb-2 font-medium">
-            {dict.auth.resetLinkSent}
-          </div>
-        )}
-        
-        <label className="text-sm font-medium text-gray-700" htmlFor="email">{dict.auth.emailLabel}</label>
-        <input
-          className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          name="email"
-          type="email"
-          placeholder={dict.auth.emailPlaceholder}
-          required
-        />
-        
-        <div className="flex flex-col gap-2 mt-4">
-          <button type="submit" className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors font-medium">
-            {dict.auth.sendResetLink}
-          </button>
-        </div>
-
-        <div className="mt-4 text-center text-sm text-gray-600 border-t border-gray-100 pt-4">
-          <Link href={`/${lang}/login`} className="text-blue-600 hover:underline font-medium">
-            {dict.auth.backToLogin}
-          </Link>
-        </div>
-      </form>
-    </div>
-  )
-}
-</file>
-
 <file path="app/[lang]/video/[id]/FavoriteButton.tsx">
 'use client'
 
@@ -1418,123 +291,6 @@ export default function FavoriteButton({
       </span>
       {isFavorited ? textRemove : textAdd}
     </button>
-  )
-}
-</file>
-
-<file path="app/[lang]/video/[id]/page.tsx">
-import { createClient } from '@/utils/supabase/server'
-import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import VideoPlayer from './VideoPlayer'
-import FavoriteButton from './FavoriteButton'
-import { getDictionary } from '@/utils/get-dictionary'
-import LanguageSwitcher from '@/app/components/LanguageSwitcher'
-
-export default async function VideoPage({ 
-  params 
-}: { 
-  params: Promise<{ lang: 'ja' | 'en', id: string }> 
-}) {
-  const { lang, id: videoId } = await params
-  const dict = await getDictionary(lang)
-
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect(`/${lang}/login`)
-
-  const { data: subscription } = await supabase
-    .from('subscriptions').select('*').eq('user_id', user.id).eq('status', 'active').single()
-
-  if (!subscription) {
-    return (
-      <div className="min-h-screen p-8 bg-gray-50 flex flex-col items-center justify-center relative">
-        <div className="absolute top-6 right-6"><LanguageSwitcher currentLang={lang} /></div>
-        <p className="text-lg text-gray-800 mb-4">{dict.video.requireSubscription}</p>
-        <Link href={`/${lang}/pricing`} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
-          {dict.video.toPricing}
-        </Link>
-      </div>
-    )
-  }
-
-  const planLimits: Record<string, number> = { light: 10, standard: 30, premium: 9999999 }
-  const limit = planLimits[subscription.plan_type] || 0
-
-  const { count } = await supabase
-    .from('viewing_history').select('*', { count: 'exact', head: true })
-    .eq('user_id', user.id)
-    .gte('viewed_at', subscription.current_period_start)
-    .lte('viewed_at', subscription.current_period_end)
-
-  const currentCount = count || 0
-
-  const { data: alreadyViewed } = await supabase
-    .from('viewing_history').select('id').eq('user_id', user.id).eq('vimeo_video_id', videoId)
-    .gte('viewed_at', subscription.current_period_start).maybeSingle()
-
-  if (!alreadyViewed && currentCount >= limit) {
-    return (
-      <div className="min-h-screen p-8 bg-gray-50 flex flex-col items-center justify-center relative">
-        <div className="absolute top-6 right-6"><LanguageSwitcher currentLang={lang} /></div>
-        <p className="text-2xl font-bold text-red-600 mb-4">
-          {dict.video.limitReachedTitle.replace('{limit}', limit.toString())}
-        </p>
-        <p className="text-gray-600 mb-6">{dict.video.limitMessage}</p>
-        <Link href={`/${lang}/dashboard`} className="text-blue-600 underline hover:text-blue-800">
-          {dict.video.backToDashboard}
-        </Link>
-      </div>
-    )
-  }
-
-  const { data: favorite } = await supabase
-    .from('favorites').select('id').eq('user_id', user.id).eq('vimeo_video_id', videoId).maybeSingle()
-
-  return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-8">
-      <div className="max-w-4xl mx-auto mt-8 md:mt-0">
-        
-        {/* ヘッダー部分 */}
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
-          <div className="flex items-center gap-4">
-            <h1 className="text-2xl font-bold text-gray-800">{dict.video.playerTitle}</h1>
-            <FavoriteButton 
-              videoId={videoId} 
-              initialIsFavorited={!!favorite} 
-              textAdd={dict.video.favoriteAdd}
-              textRemove={dict.video.favoriteRemove}
-            />
-          </div>
-          <div className="flex items-center">
-            {/* 言語切り替えボタンと戻るボタンを横並びに配置 */}
-            <LanguageSwitcher currentLang={lang} />
-            <Link href={`/${lang}/dashboard`} className="text-sm text-blue-600 hover:underline border border-blue-200 px-3 py-1.5 rounded-md bg-white text-center">
-              {dict.video.backToDashboard}
-            </Link>
-          </div>
-        </div>
-        
-        <VideoPlayer 
-          videoId={videoId} 
-          alreadyViewed={!!alreadyViewed} 
-          textCompleted={dict.video.watchCompleted}
-        />
-
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex justify-between items-center">
-          <div>
-            <p className="text-sm text-gray-500 mb-1">{dict.video.currentPlan}</p>
-            <p className="text-lg font-semibold text-blue-900 capitalize">{subscription.plan_type}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-sm text-gray-500 mb-1">{dict.video.monthlyWatchCount}</p>
-            <p className="text-lg font-semibold text-gray-800">
-              {currentCount} <span className="text-sm font-normal text-gray-500">/ {subscription.plan_type === 'premium' ? dict.video.unlimited : `${limit}${dict.video.videosUnit}`}</span>
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
   )
 }
 </file>
@@ -1649,6 +405,91 @@ export async function GET(request: Request) {
 }
 </file>
 
+<file path="app/api/favorites/route.ts">
+import { NextResponse } from 'next/server'
+import { createClient } from '@/utils/supabase/server'
+
+export const runtime = 'edge';
+
+export async function POST(req: Request) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  try {
+    const { videoId } = await req.json()
+
+    // 既にお気に入り登録されているか確認
+    const { data: existing } = await supabase
+      .from('favorites')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('vimeo_video_id', videoId)
+      .maybeSingle()
+
+    if (existing) {
+      // 登録済みの場合は削除（お気に入り解除）
+      await supabase.from('favorites').delete().eq('id', existing.id)
+      return NextResponse.json({ favorited: false })
+    } else {
+      // 未登録の場合は追加
+      await supabase.from('favorites').insert({ user_id: user.id, vimeo_video_id: videoId })
+      return NextResponse.json({ favorited: true })
+    }
+  } catch (error) {
+    return NextResponse.json({ error: 'Server Error' }, { status: 500 })
+  }
+}
+</file>
+
+<file path="app/api/record-view/route.ts">
+import { NextResponse } from 'next/server'
+import { createClient } from '@/utils/supabase/server'
+
+export const runtime = 'edge';
+
+export async function POST(req: Request) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  try {
+    const { videoId } = await req.json()
+
+    // すでに今月の視聴履歴に存在するかチェック
+    const { data: subscription } = await supabase
+      .from('subscriptions')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('status', 'active')
+      .single()
+
+    if (!subscription) return NextResponse.json({ error: 'No active plan' }, { status: 403 })
+
+    const { data: alreadyViewed } = await supabase
+      .from('viewing_history')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('vimeo_video_id', videoId)
+      .gte('viewed_at', subscription.current_period_start)
+      .single()
+
+    // まだ視聴履歴になければ記録を追加
+    if (!alreadyViewed) {
+      await supabase.from('viewing_history').insert({
+        user_id: user.id,
+        vimeo_video_id: videoId
+      })
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    return NextResponse.json({ error: 'Server Error' }, { status: 500 })
+  }
+}
+</file>
+
 <file path="app/components/LanguageSwitcher.tsx">
 'use client'
 
@@ -1731,6 +572,35 @@ export default function PasswordInput({
       </button>
     </div>
   )
+}
+</file>
+
+<file path="app/globals.css">
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
 }
 </file>
 
@@ -2039,157 +909,6 @@ export const config = {
 }
 </file>
 
-<file path="utils/get-dictionary.ts">
-import 'server-only';
-
-// ロケールごとのJSONファイルを動的にインポートするオブジェクト
-const dictionaries = {
-  en: () => import('../dictionaries/en.json').then((module) => module.default),
-  ja: () => import('../dictionaries/ja.json').then((module) => module.default),
-};
-
-// 辞書を取得する非同期関数
-export const getDictionary = async (locale: 'en' | 'ja') => {
-  // 指定された言語が存在しない場合は、安全のため日本語(ja)をフォールバックとして返します
-  return dictionaries[locale]?.() ?? dictionaries.ja();
-};
-</file>
-
-<file path="app/api/favorites/route.ts">
-import { NextResponse } from 'next/server'
-import { createClient } from '@/utils/supabase/server'
-
-export const runtime = 'edge';
-
-export async function POST(req: Request) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  try {
-    const { videoId } = await req.json()
-
-    // 既にお気に入り登録されているか確認
-    const { data: existing } = await supabase
-      .from('favorites')
-      .select('id')
-      .eq('user_id', user.id)
-      .eq('vimeo_video_id', videoId)
-      .maybeSingle()
-
-    if (existing) {
-      // 登録済みの場合は削除（お気に入り解除）
-      await supabase.from('favorites').delete().eq('id', existing.id)
-      return NextResponse.json({ favorited: false })
-    } else {
-      // 未登録の場合は追加
-      await supabase.from('favorites').insert({ user_id: user.id, vimeo_video_id: videoId })
-      return NextResponse.json({ favorited: true })
-    }
-  } catch (error) {
-    return NextResponse.json({ error: 'Server Error' }, { status: 500 })
-  }
-}
-</file>
-
-<file path="app/api/record-view/route.ts">
-import { NextResponse } from 'next/server'
-import { createClient } from '@/utils/supabase/server'
-
-export const runtime = 'edge';
-
-export async function POST(req: Request) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  try {
-    const { videoId } = await req.json()
-
-    // すでに今月の視聴履歴に存在するかチェック
-    const { data: subscription } = await supabase
-      .from('subscriptions')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('status', 'active')
-      .single()
-
-    if (!subscription) return NextResponse.json({ error: 'No active plan' }, { status: 403 })
-
-    const { data: alreadyViewed } = await supabase
-      .from('viewing_history')
-      .select('id')
-      .eq('user_id', user.id)
-      .eq('vimeo_video_id', videoId)
-      .gte('viewed_at', subscription.current_period_start)
-      .single()
-
-    // まだ視聴履歴になければ記録を追加
-    if (!alreadyViewed) {
-      await supabase.from('viewing_history').insert({
-        user_id: user.id,
-        vimeo_video_id: videoId
-      })
-    }
-
-    return NextResponse.json({ success: true })
-  } catch (error) {
-    return NextResponse.json({ error: 'Server Error' }, { status: 500 })
-  }
-}
-</file>
-
-<file path="app/globals.css">
-@import "tailwindcss";
-
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-}
-</file>
-
-<file path="eslint.config.mjs">
-import { defineConfig, globalIgnores } from "eslint/config";
-import nextVitals from "eslint-config-next/core-web-vitals";
-import nextTs from "eslint-config-next/typescript";
-
-const eslintConfig = defineConfig([
-  ...nextVitals,
-  ...nextTs,
-  // Override default ignores of eslint-config-next.
-  globalIgnores([
-    // Default ignores of eslint-config-next:
-    ".next/**",
-    "out/**",
-    "build/**",
-    "next-env.d.ts",
-  ]),
-]);
-
-export default eslintConfig;
-</file>
-
 <file path="next.config.ts">
 import type { NextConfig } from "next";
 
@@ -2337,6 +1056,22 @@ async function fetchVimeoVideos() {
 fetchVimeoVideos();
 </file>
 
+<file path="utils/get-dictionary.ts">
+import 'server-only';
+
+// ロケールごとのJSONファイルを動的にインポートするオブジェクト
+const dictionaries = {
+  en: () => import('../dictionaries/en.json').then((module) => module.default),
+  ja: () => import('../dictionaries/ja.json').then((module) => module.default),
+};
+
+// 辞書を取得する非同期関数
+export const getDictionary = async (locale: 'en' | 'ja') => {
+  // 指定された言語が存在しない場合は、安全のため日本語(ja)をフォールバックとして返します
+  return dictionaries[locale]?.() ?? dictionaries.ja();
+};
+</file>
+
 <file path="utils/supabase/client.ts">
 import { createBrowserClient } from '@supabase/ssr'
 
@@ -2374,6 +1109,1271 @@ export async function createClient() {
         },
       },
     }
+  )
+}
+</file>
+
+<file path="app/[lang]/dashboard/page.tsx">
+import { createClient } from '@/utils/supabase/server'
+import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import Stripe from 'stripe'
+import { getDictionary } from '@/utils/get-dictionary'
+import LanguageSwitcher from '@/app/components/LanguageSwitcher'
+
+export const runtime = 'edge';
+
+type Video = { id: string; title: string; vimeo_id: string; thumbnail_url: string | null }
+
+export default async function DashboardPage({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }) {
+  const { lang } = await params;
+  const dict = await getDictionary(lang);
+  
+  const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect(`/${lang}/login`)
+
+  const isAdmin = user.email === process.env.ADMIN_EMAIL;
+
+  const { data: subscription } = await supabase
+    .from('subscriptions').select('*').eq('user_id', user.id).eq('status', 'active').limit(1).maybeSingle()
+
+  const { data: videos } = await supabase.from('videos').select('*')
+  
+  const { data: history } = await supabase
+    .from('viewing_history').select('vimeo_video_id').eq('user_id', user.id)
+  
+  const viewedIds = new Set(history?.map(h => h.vimeo_video_id) || [])
+
+  const { data: latestHistory } = await supabase
+    .from('viewing_history').select('vimeo_video_id').eq('user_id', user.id)
+    .order('viewed_at', { ascending: false }).limit(1).maybeSingle()
+
+  let lastWatchedVideo: Video | null = null
+  if (latestHistory && videos) {
+    lastWatchedVideo = videos.find(v => v.vimeo_id === latestHistory.vimeo_video_id) as Video || null
+  }
+
+  const { data: favoritesData } = await supabase
+    .from('favorites').select('vimeo_video_id').eq('user_id', user.id).order('created_at', { ascending: false })
+
+  const favoriteIds = new Set(favoritesData?.map(f => f.vimeo_video_id) || [])
+  const favoriteVideos = videos?.filter(v => favoriteIds.has(v.vimeo_id)) as Video[] || []
+
+  const groupedVideos: Record<string, Video[]> = {}
+  if (videos) {
+    videos.forEach((video) => {
+      const match = video.title.match(/^(\d+)-/)
+      const section = match ? match[1] : 'その他'
+      if (!groupedVideos[section]) groupedVideos[section] = []
+      groupedVideos[section].push(video as Video)
+    })
+  }
+
+  const sortedSections = Object.keys(groupedVideos).sort((a, b) => {
+    if (a === 'その他') return 1; if (b === 'その他') return -1;
+    return parseInt(a) - parseInt(b);
+  })
+
+  const sectionStats = sortedSections.map(section => {
+    const totalCount = groupedVideos[section].length
+    const viewedCount = groupedVideos[section].filter(v => viewedIds.has(v.vimeo_id)).length
+    const progress = totalCount > 0 ? Math.round((viewedCount / totalCount) * 100) : 0
+    return { section, totalCount, viewedCount, progress }
+  })
+
+  const getPlanName = (planType: string) => {
+    switch (planType) {
+      case 'light': return dict.dashboard.planLight
+      case 'standard': return dict.dashboard.planStandard
+      case 'premium': return dict.dashboard.planPremium
+      default: return dict.dashboard.planNone
+    }
+  }
+
+  const signOut = async (formData: FormData) => {
+    'use server'
+    const currentLang = formData.get('lang') as string
+    const supabaseClient = await createClient()
+    await supabaseClient.auth.signOut()
+    redirect(`/${currentLang}/login`)
+  }
+
+  const goToBillingPortal = async (formData: FormData) => {
+    'use server'
+    const currentLang = formData.get('lang') as string
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, { apiVersion: '2026-02-25.clover' })
+    if (!subscription) return
+    
+    const stripeSub = await stripe.subscriptions.retrieve(subscription.stripe_subscription_id)
+    const customerId = stripeSub.customer as string
+
+    // ★追加：ポータルを開く直前に、Stripe上の顧客の言語設定を現在の言語で上書き保存します
+    await stripe.customers.update(customerId, {
+      preferred_locales: [currentLang === 'ja' ? 'ja' : 'en']
+    });
+
+    const session = await stripe.billingPortal.sessions.create({ 
+      customer: customerId, 
+      return_url: `http://localhost:3000/${currentLang}/dashboard`,
+      locale: currentLang === 'ja' ? 'ja' : 'en' 
+    })
+    
+    if (session.url) redirect(session.url)
+  }
+
+
+
+  const VideoCard = ({ video, label }: { video: Video, label?: string }) => {
+    const isViewed = viewedIds.has(video.vimeo_id)
+    return (
+      <Link href={`/${lang}/video/${video.vimeo_id}`} className="block group">
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-lg transition-all hover:border-blue-300 flex items-center p-3 gap-4 relative">
+          <div className="w-32 aspect-video bg-gray-100 rounded-lg flex-shrink-0 relative overflow-hidden flex items-center justify-center">
+            {video.thumbnail_url ? (
+               <img src={video.thumbnail_url} alt={video.title} className="object-cover w-full h-full group-hover:scale-105 transition-transform" />
+            ) : (
+               <span className="text-gray-400 text-xs font-medium">Video</span>
+            )}
+            {isViewed && (
+              <div className="absolute top-1 right-1 bg-green-500 text-white text-[10px] px-1.5 py-0.5 rounded shadow-sm font-bold">✓</div>
+            )}
+          </div>
+          <div className="flex-grow">
+            {label && <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded mb-1 inline-block">{label}</span>}
+            <h3 className="font-bold text-gray-900 group-hover:text-blue-600 transition-colors line-clamp-2">{video.title}</h3>
+          </div>
+          <div className="pr-4 hidden sm:block">
+            <span className="text-blue-600 font-medium text-sm">{dict.dashboard.watch}</span>
+          </div>
+        </div>
+      </Link>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-4 md:p-8">
+      <div className="max-w-5xl mx-auto">
+        
+        {/* ヘッダー */}
+        <div className="flex justify-between items-center mb-8 bg-white p-4 rounded-lg shadow-sm border border-gray-100">
+          <h1 className="text-2xl font-bold text-gray-800">{dict.dashboard.title}</h1>
+          
+          <div className="flex items-center gap-4">
+            <LanguageSwitcher currentLang={lang} />
+            {isAdmin && (
+              <Link href={`/${lang}/admin`} className="px-4 py-2 text-sm font-bold text-white bg-red-500 rounded-md hover:bg-red-600 transition-colors shadow-sm hidden sm:block">
+                {dict.dashboard.adminButton}
+              </Link>
+            )}
+            <form action={signOut}>
+              <input type="hidden" name="lang" value={lang} />
+              <button className="px-4 py-2 text-sm text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200">
+                {dict.dashboard.logoutButton}
+              </button>
+            </form>
+          </div>
+        </div>
+        
+        {/* ご契約状況 */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6 mb-8">
+          <p className="mb-4 text-gray-600">
+            {dict.dashboard.welcome}<span className="font-semibold text-gray-800">{user.email}</span>{dict.dashboard.honorific}
+          </p>
+          <div className="bg-gradient-to-r from-blue-50 border-l-4 border-blue-500 rounded-r-md p-6">
+            <h2 className="text-sm font-bold text-blue-800 mb-2 tracking-wider">{dict.dashboard.subscriptionStatus}</h2>
+            {subscription ? (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <p className="text-2xl font-extrabold text-blue-900 mb-1">{getPlanName(subscription.plan_type)}</p>
+                  <p className="text-sm text-blue-700">
+                    {dict.dashboard.renewalDate}{new Date(subscription.current_period_end).toLocaleDateString(lang === 'ja' ? 'ja-JP' : 'en-US')}
+                  </p>
+                </div>
+                <form action={goToBillingPortal}>
+                  <input type="hidden" name="lang" value={lang} />
+                  <button type="submit" className="text-sm bg-white border border-blue-200 text-blue-700 px-5 py-2.5 rounded-md hover:bg-blue-50 font-medium shadow-sm">
+                    {dict.dashboard.manageSubscription}
+                  </button>
+                </form>
+              </div>
+            ) : (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <p className="text-blue-800 font-medium">{dict.dashboard.noSubscription}</p>
+                <Link href={`/${lang}/pricing`} className="inline-block px-6 py-2.5 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 text-center">
+                  {dict.dashboard.choosePlan}
+                </Link>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* クイックアクセス */}
+        {(lastWatchedVideo || favoriteVideos.length > 0) && (
+          <div className="mb-12 grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {lastWatchedVideo && (
+              <div>
+                <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                  <span className="text-blue-600">▶</span> {dict.dashboard.continueWatching}
+                </h2>
+                <VideoCard video={lastWatchedVideo} label={dict.dashboard.recentlyWatched} />
+              </div>
+            )}
+            {favoriteVideos.length > 0 && (
+              <div>
+                <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                  <span className="text-pink-500">♥</span> {dict.dashboard.favorites}
+                </h2>
+                <div className="space-y-3">
+                  {favoriteVideos.slice(0, 3).map(video => (
+                    <VideoCard key={video.id} video={video} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* コース一覧（セクション一覧） */}
+        <h2 className="text-xl font-bold text-gray-800 mb-6 border-b border-gray-200 pb-2">{dict.dashboard.courseList}</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {sectionStats.map(({ section, totalCount, viewedCount, progress }) => (
+            <Link href={`/${lang}/section/${section}`} key={section} className="block group">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-all hover:border-blue-300">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-bold text-gray-900 group-hover:text-blue-600">{dict.dashboard.section}{section}</h3>
+                  <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-md">{totalCount}{dict.dashboard.videosCount}</span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-2 mb-2">
+                  <div className="bg-blue-600 h-2 rounded-full transition-all duration-500" style={{ width: `${progress}%` }}></div>
+                </div>
+                <div className="flex justify-between text-xs text-gray-500 font-medium">
+                  <span>{dict.dashboard.progress}{progress}%</span>
+                  <span>{viewedCount} / {totalCount}{dict.dashboard.completed}</span>
+                </div>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+</file>
+
+<file path="app/[lang]/layout.tsx">
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import "../globals.css";
+import { getDictionary } from '@/utils/get-dictionary';
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+// ★ 修正1：Promise<{ lang: string }> に変更
+export async function generateMetadata({ params }: { params: Promise<{ lang: string }> }): Promise<Metadata> {
+  const { lang } = await params;
+  // ★ ここで 'ja' | 'en' 型として扱うように指定（as 構文）
+  const dict = await getDictionary(lang as 'ja' | 'en');
+  
+  return {
+    title: dict.metadata.title,
+    description: dict.metadata.description,
+  };
+}
+
+// ★ 修正2：Promise<{ lang: string }> に変更
+export default async function RootLayout({
+  children,
+  params,
+}: Readonly<{
+  children: React.ReactNode;
+  params: Promise<{ lang: string }>;
+}>) {
+  const { lang } = await params;
+  
+  return (
+    <html lang={lang}>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+        {children}
+      </body>
+    </html>
+  );
+}
+</file>
+
+<file path="app/[lang]/login/page.tsx">
+import { createClient } from '@/utils/supabase/server'
+import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import { getDictionary } from '@/utils/get-dictionary'
+import LanguageSwitcher from '@/app/components/LanguageSwitcher'
+import PasswordInput from '@/app/components/PasswordInput'
+
+export const runtime = 'edge';
+
+export default async function LoginPage({ 
+  params, 
+  searchParams 
+}: { 
+  params: Promise<{ lang: 'ja' | 'en' }>,
+  searchParams: Promise<{ message?: string }>
+}) {
+  const { lang } = await params;
+  const { message } = await searchParams;
+  const dict = await getDictionary(lang);
+
+  const signIn = async (formData: FormData) => {
+    'use server'
+    const email = formData.get('email') as string
+    const password = formData.get('password') as string
+    const currentLang = formData.get('lang') as string
+    const supabase = await createClient()
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
+
+    if (error) {
+      return redirect(`/${currentLang}/login?message=error`)
+    }
+    return redirect(`/${currentLang}/dashboard`)
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 relative">
+      <div className="absolute top-6 right-6">
+        <LanguageSwitcher currentLang={lang} />
+      </div>
+
+      <form action={signIn} className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
+        <input type="hidden" name="lang" value={lang} />
+        
+        <h1 className="text-2xl font-bold text-center mb-4 text-gray-800">{dict.auth.loginTitle}</h1>
+        
+        {message === 'error' && (
+          <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm text-center mb-2">
+            {dict.auth.loginError}
+          </div>
+        )}
+        {message === 'success' && (
+          <div className="bg-green-50 text-green-700 p-3 rounded-md text-sm text-center mb-2">
+            {dict.auth.signupSuccess}
+          </div>
+        )}
+        
+        <label className="text-sm font-medium text-gray-700" htmlFor="email">{dict.auth.emailLabel}</label>
+        <input
+          className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          name="email"
+          type="email"
+          placeholder={dict.auth.emailPlaceholder}
+          required
+        />
+        
+        <label className="text-sm font-medium text-gray-700 mt-2" htmlFor="password">{dict.auth.passwordLabel}</label>
+        <PasswordInput 
+          name="password"
+          placeholder={dict.auth.passwordPlaceholder}
+          required={true}
+          minLength={6}
+          showText={dict.auth.showPassword}
+          hideText={dict.auth.hidePassword}
+        />
+        
+        {/* ★追加：パスワードリセットへの導線 */}
+        <div className="flex justify-end mt-1">
+          <Link href={`/${lang}/reset-password`} className="text-xs text-blue-600 hover:underline font-medium">
+            {dict.auth.forgotPassword}
+          </Link>
+        </div>
+        
+        <div className="flex flex-col gap-2 mt-6">
+          <button type="submit" className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors font-medium">
+            {dict.auth.loginButton}
+          </button>
+        </div>
+
+        <div className="mt-4 text-center text-sm text-gray-600 border-t border-gray-100 pt-4">
+          {dict.auth.toSignupText}{' '}
+          <Link href={`/${lang}/signup`} className="text-blue-600 hover:underline font-medium">
+            {dict.auth.toSignupLink}
+          </Link>
+        </div>
+      </form>
+    </div>
+  )
+}
+</file>
+
+<file path="app/[lang]/page.tsx">
+import Link from 'next/link'
+import { getDictionary } from '@/utils/get-dictionary'
+import LanguageSwitcher from '@/app/components/LanguageSwitcher'
+
+export const runtime = 'edge';
+
+export default async function HomePage({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }) {
+  const { lang } = await params;
+  const dict = await getDictionary(lang);
+
+  return (
+    <div className="min-h-screen bg-white font-sans text-gray-900">
+      
+      {/* ナビゲーションバー */}
+      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+              <span className="text-white font-bold text-xl leading-none">あ</span>
+            </div>
+            <span className="text-xl font-bold tracking-tight text-gray-800">{dict.home.title}</span>
+          </div>
+          <nav className="flex items-center">
+            <LanguageSwitcher currentLang={lang} />
+            <Link 
+              href={`/${lang}/login`} 
+              className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors mr-6"
+            >
+              {dict.home.login}
+            </Link>
+            <Link 
+              href={`/${lang}/login`} 
+              className="text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md transition-colors shadow-sm"
+            >
+              {dict.home.startFree}
+            </Link>
+          </nav>
+
+        </div>
+      </header>
+
+      <main>
+        {/* ヒーローセクション（ファーストビュー） */}
+        <section className="relative pt-24 pb-32 overflow-hidden bg-gradient-to-b from-blue-50 to-white">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
+            <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight text-gray-900 mb-6 leading-tight">
+              {dict.home.heroTitle1}<br className="hidden md:block" />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-cyan-500">
+                {dict.home.heroTitle2}
+              </span>
+            </h1>
+            <p className="mt-4 text-xl text-gray-600 max-w-2xl mx-auto mb-10">
+              {dict.home.heroDescription}
+            </p>
+            <div className="flex flex-col sm:flex-row justify-center gap-4">
+              <Link 
+                href={`/${lang}/login`} 
+                className="px-8 py-4 text-base font-bold text-white bg-blue-600 rounded-full hover:bg-blue-700 shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1"
+              >
+                {dict.home.startNow}
+              </Link>
+              <a 
+                href="#pricing" 
+                className="px-8 py-4 text-base font-bold text-blue-700 bg-blue-100 rounded-full hover:bg-blue-200 transition-all"
+              >
+                {dict.home.viewPricing}
+              </a>
+            </div>
+          </div>
+          
+          {/* 背景の装飾 */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-200/30 rounded-full blur-3xl -z-10 pointer-events-none"></div>
+        </section>
+
+        {/* 特徴・メリットセクション */}
+        <section className="py-20 bg-white">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center mb-16">
+              <h2 className="text-3xl font-bold text-gray-900 mb-4">{dict.home.reasonsTitle}</h2>
+              <p className="text-gray-600">{dict.home.reasonsDesc}</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
+              {/* 特徴1 */}
+              <div className="bg-gray-50 rounded-2xl p-8 border border-gray-100 hover:shadow-md transition-shadow">
+                <div className="w-14 h-14 bg-blue-100 rounded-xl flex items-center justify-center mb-6">
+                  <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-3">{dict.home.feature1Title}</h3>
+                <p className="text-gray-600">{dict.home.feature1Desc}</p>
+              </div>
+
+              {/* 特徴2 */}
+              <div className="bg-gray-50 rounded-2xl p-8 border border-gray-100 hover:shadow-md transition-shadow">
+                <div className="w-14 h-14 bg-cyan-100 rounded-xl flex items-center justify-center mb-6">
+                  <svg className="w-8 h-8 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-3">{dict.home.feature2Title}</h3>
+                <p className="text-gray-600">{dict.home.feature2Desc}</p>
+              </div>
+
+              {/* 特徴3 */}
+              <div className="bg-gray-50 rounded-2xl p-8 border border-gray-100 hover:shadow-md transition-shadow">
+                <div className="w-14 h-14 bg-indigo-100 rounded-xl flex items-center justify-center mb-6">
+                  <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-3">{dict.home.feature3Title}</h3>
+                <p className="text-gray-600">{dict.home.feature3Desc}</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* 料金プランプレビューセクション */}
+        <section id="pricing" className="py-20 bg-gray-50 border-t border-gray-100">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center mb-16">
+              <h2 className="text-3xl font-bold text-gray-900 mb-4">{dict.home.pricingTitle}</h2>
+              <p className="text-gray-600">{dict.home.pricingDesc}</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+              {/* プラン1 */}
+              <div className="bg-white rounded-2xl p-8 border border-gray-200 shadow-sm text-center">
+                <h3 className="text-lg font-medium text-gray-500 mb-2">{dict.home.planLight}</h3>
+                <p className="text-4xl font-extrabold text-gray-900 mb-6">¥1,000<span className="text-base font-normal text-gray-500">{dict.home.perMonth}</span></p>
+                <ul className="text-left space-y-3 mb-8 text-gray-600">
+                  <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> {dict.home.lightFeature1}</li>
+                  <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> {dict.home.featureProgress}</li>
+                </ul>
+              </div>
+              
+              {/* プラン2（おすすめ） */}
+              <div className="bg-white rounded-2xl p-8 border-2 border-blue-500 shadow-xl text-center relative transform md:-translate-y-4">
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-blue-500 text-white px-4 py-1 rounded-full text-sm font-bold tracking-wide">{dict.home.mostPopular}</div>
+                <h3 className="text-lg font-medium text-blue-600 mb-2">{dict.home.planStandard}</h3>
+                <p className="text-4xl font-extrabold text-gray-900 mb-6">¥3,000<span className="text-base font-normal text-gray-500">{dict.home.perMonth}</span></p>
+                <ul className="text-left space-y-3 mb-8 text-gray-600">
+                  <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> {dict.home.standardFeature1}</li>
+                  <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> {dict.home.featureProgress}</li>
+                  <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> {dict.home.featureAllAccess}</li>
+                </ul>
+              </div>
+
+              {/* プラン3 */}
+              <div className="bg-gray-900 rounded-2xl p-8 border border-gray-800 shadow-sm text-center text-white">
+                <h3 className="text-lg font-medium text-gray-400 mb-2">{dict.home.planPremium}</h3>
+                <p className="text-4xl font-extrabold text-white mb-6">¥5,000<span className="text-base font-normal text-gray-400">{dict.home.perMonth}</span></p>
+                <ul className="text-left space-y-3 mb-8 text-gray-300">
+                  <li className="flex items-center"><span className="text-blue-400 mr-2">✓</span> {dict.home.premiumFeature1}</li>
+                  <li className="flex items-center"><span className="text-blue-400 mr-2">✓</span> {dict.home.featureProgress}</li>
+                  <li className="flex items-center"><span className="text-blue-400 mr-2">✓</span> {dict.home.featureAllAccess}</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* CTA（コールトゥアクション）セクション */}
+        <section className="py-20 bg-blue-600 text-white text-center">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+            <h2 className="text-3xl font-bold mb-6">{dict.home.ctaTitle}</h2>
+            <p className="text-blue-100 text-lg mb-10">
+              {dict.home.ctaDesc}
+            </p>
+            <Link 
+              href={`/${lang}/login`} 
+              className="inline-block px-10 py-4 text-lg font-bold text-blue-600 bg-white rounded-full hover:bg-gray-50 shadow-lg transition-colors"
+            >
+              {dict.home.createFreeAccount}
+            </Link>
+          </div>
+        </section>
+      </main>
+
+      {/* フッター */}
+      <footer className="bg-gray-50 py-12 border-t border-gray-200">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row justify-between items-center gap-4">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 bg-gray-400 rounded-md flex items-center justify-center">
+              <span className="text-white font-bold text-xs leading-none">あ</span>
+            </div>
+            <span className="text-lg font-bold text-gray-600">{dict.home.title}</span>
+          </div>
+          <p className="text-gray-400 text-sm">
+            © {new Date().getFullYear()} {dict.home.footerRights}
+          </p>
+        </div>
+      </footer>
+
+    </div>
+  )
+}
+</file>
+
+<file path="app/[lang]/pricing/page.tsx">
+import { createClient } from '@/utils/supabase/server'
+import { redirect } from 'next/navigation'
+import Stripe from 'stripe'
+import { getDictionary } from '@/utils/get-dictionary'
+import LanguageSwitcher from '@/app/components/LanguageSwitcher'
+
+export const runtime = 'edge';
+
+export default async function PricingPage({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }) {
+  const { lang } = await params
+  const dict = await getDictionary(lang)
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    redirect(`/${lang}/login`)
+  }
+
+  const { data: existingSubscription } = await supabase
+    .from('subscriptions').select('*').eq('user_id', user.id).eq('status', 'active').limit(1).maybeSingle()
+
+  // ★将来のための準備：言語（通貨）に応じた価格IDを返す関数
+  const getPriceId = (plan: 'light' | 'standard' | 'premium', currentLang: string) => {
+    /* * 将来、StripeダッシュボードでUSD用の価格を作成したら、
+     * ここで process.env.STRIPE_PRICE_ID_LIGHT_USD などを返すように変更してください。
+     * 現在はプレースホルダーとして、どちらの言語でも既存のIDを返しています。
+     */
+    if (plan === 'light') return process.env.STRIPE_PRICE_ID_LIGHT;
+    if (plan === 'standard') return process.env.STRIPE_PRICE_ID_STANDARD;
+    if (plan === 'premium') return process.env.STRIPE_PRICE_ID_PREMIUM;
+  }
+
+const handleCheckout = async (formData: FormData) => {
+    'use server'
+    const currentLang = formData.get('lang') as string
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, { apiVersion: '2026-02-25.clover' })
+
+    const supabaseAdmin = await createClient()
+    const { data: checkSub } = await supabaseAdmin
+      .from('subscriptions').select('id').eq('user_id', user.id).eq('status', 'active').limit(1)
+
+    if (checkSub && checkSub.length > 0) {
+      const errorMsg = currentLang === 'ja' ? 'すでにプランを契約中のため、追加購入はできません' : 'You are already subscribed to a plan. Additional purchases are not allowed.'
+      redirect(`/${currentLang}/dashboard?message=` + encodeURIComponent(errorMsg))
+    }
+
+    const priceId = formData.get('priceId') as string
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [{ price: priceId, quantity: 1 }],
+      mode: 'subscription',
+      success_url: `http://localhost:3000/${currentLang}/dashboard?success=true`,
+      cancel_url: `http://localhost:3000/${currentLang}/pricing?canceled=true`,
+      customer_email: user.email,
+      // ★確認：決済画面の表示言語を強制的に指定します
+      locale: currentLang === 'ja' ? 'ja' : 'en',
+      metadata: { userId: user.id },
+    })
+
+    if (session.url) redirect(session.url)
+  }
+
+  const isSubscribed = !!existingSubscription
+
+  return (
+    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8 relative">
+      <div className="absolute top-6 right-6">
+        <LanguageSwitcher currentLang={lang} />
+      </div>
+
+      <div className="max-w-7xl mx-auto mt-8">
+        <div className="text-center">
+          <h2 className="text-3xl font-extrabold text-gray-900 sm:text-4xl">{dict.pricing.title}</h2>
+          <p className="mt-4 text-xl text-gray-600">{dict.pricing.subtitle}</p>
+        </div>
+
+        {isSubscribed && (
+          <div className="mt-8 max-w-3xl mx-auto bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 rounded shadow-sm">
+            <p className="font-bold">{dict.pricing.noticeTitle}</p>
+            <p>{dict.pricing.noticeMessage}</p>
+          </div>
+        )}
+
+        <div className="mt-12 space-y-4 sm:space-y-0 sm:grid sm:grid-cols-3 sm:gap-6 lg:max-w-4xl lg:mx-auto xl:max-w-none xl:mx-0 xl:grid-cols-3">
+          
+          {/* ライトプラン */}
+          <div className="border border-gray-200 rounded-lg shadow-sm divide-y divide-gray-200 bg-white">
+            <div className="p-6">
+              <h3 className="text-lg leading-6 font-medium text-gray-900">{dict.pricing.planLight}</h3>
+              <p className="mt-8">
+                <span className="text-4xl font-extrabold text-gray-900">{dict.pricing.priceLight}</span>
+                <span className="text-base font-medium text-gray-500">{dict.pricing.perMonth}</span>
+              </p>
+              <form action={handleCheckout} className="mt-8">
+                <input type="hidden" name="lang" value={lang} />
+                <input type="hidden" name="priceId" value={getPriceId('light', lang)} />
+                <button 
+                  type="submit" 
+                  disabled={isSubscribed}
+                  className={`w-full text-white rounded-md py-2 text-sm font-semibold transition-colors ${
+                    isSubscribed ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
+                  }`}
+                >
+                  {isSubscribed ? dict.pricing.subscribed : dict.pricing.selectPlan}
+                </button>
+              </form>
+            </div>
+          </div>
+
+          {/* スタンダードプラン */}
+          <div className="border border-blue-500 rounded-lg shadow-md divide-y divide-gray-200 bg-white relative">
+            <div className="p-6">
+              <h3 className="text-lg leading-6 font-medium text-gray-900">{dict.pricing.planStandard}</h3>
+              <p className="mt-8">
+                <span className="text-4xl font-extrabold text-gray-900">{dict.pricing.priceStandard}</span>
+                <span className="text-base font-medium text-gray-500">{dict.pricing.perMonth}</span>
+              </p>
+              <form action={handleCheckout} className="mt-8">
+                <input type="hidden" name="lang" value={lang} />
+                <input type="hidden" name="priceId" value={getPriceId('standard', lang)} />
+                <button 
+                  type="submit" 
+                  disabled={isSubscribed}
+                  className={`w-full text-white rounded-md py-2 text-sm font-semibold transition-colors ${
+                    isSubscribed ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'
+                  }`}
+                >
+                  {isSubscribed ? dict.pricing.subscribed : dict.pricing.selectPlan}
+                </button>
+              </form>
+            </div>
+          </div>
+
+          {/* プレミアムプラン */}
+          <div className="border border-gray-200 rounded-lg shadow-sm divide-y divide-gray-200 bg-white">
+            <div className="p-6">
+              <h3 className="text-lg leading-6 font-medium text-gray-900">{dict.pricing.planPremium}</h3>
+              <p className="mt-8">
+                <span className="text-4xl font-extrabold text-gray-900">{dict.pricing.pricePremium}</span>
+                <span className="text-base font-medium text-gray-500">{dict.pricing.perMonth}</span>
+              </p>
+              <form action={handleCheckout} className="mt-8">
+                <input type="hidden" name="lang" value={lang} />
+                <input type="hidden" name="priceId" value={getPriceId('premium', lang)} />
+                <button 
+                  type="submit" 
+                  disabled={isSubscribed}
+                  className={`w-full text-white rounded-md py-2 text-sm font-semibold transition-colors ${
+                    isSubscribed ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-800 hover:bg-gray-900'
+                  }`}
+                >
+                  {isSubscribed ? dict.pricing.subscribed : dict.pricing.selectPlan}
+                </button>
+              </form>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  )
+}
+</file>
+
+<file path="app/[lang]/reset-password/page.tsx">
+import { createClient } from '@/utils/supabase/server'
+import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import { headers } from 'next/headers'
+import { getDictionary } from '@/utils/get-dictionary'
+import LanguageSwitcher from '@/app/components/LanguageSwitcher'
+
+export const runtime = 'edge';
+
+export default async function ResetPasswordPage({ 
+  params,
+  searchParams
+}: { 
+  params: Promise<{ lang: 'ja' | 'en' }>,
+  searchParams: Promise<{ message?: string }>
+}) {
+  const { lang } = await params;
+  const { message } = await searchParams;
+  const dict = await getDictionary(lang);
+
+  const requestReset = async (formData: FormData) => {
+    'use server'
+    const email = formData.get('email') as string
+    const currentLang = formData.get('lang') as string
+    
+    const headersList = await headers()
+    const origin = headersList.get('origin') || 'http://localhost:3000'
+    
+    const supabase = await createClient()
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${origin}/api/auth/callback?next=/${currentLang}/update-password`,
+    })
+
+    if (error) {
+      console.error('メール送信エラー:', error.message)
+      // ★追加：エラーメッセージに「rate limit」が含まれているか判定します
+      if (error.message.toLowerCase().includes('rate limit')) {
+        return redirect(`/${currentLang}/reset-password?message=rate_limit`)
+      }
+      return redirect(`/${currentLang}/reset-password?message=error`)
+    }
+    return redirect(`/${currentLang}/reset-password?message=success`)
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 relative">
+      <div className="absolute top-6 right-6">
+        <LanguageSwitcher currentLang={lang} />
+      </div>
+
+      <form action={requestReset} className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
+        <input type="hidden" name="lang" value={lang} />
+        
+        <h1 className="text-2xl font-bold text-center mb-2 text-gray-800">{dict.auth.resetPasswordTitle}</h1>
+        <p className="text-sm text-gray-600 text-center mb-4">{dict.auth.resetPasswordDesc}</p>
+        
+        {/* 成功メッセージ */}
+        {message === 'success' && (
+          <div className="bg-green-50 text-green-700 p-4 rounded-md text-sm text-center mb-2 font-medium border border-green-200">
+            {dict.auth.resetLinkSent}
+          </div>
+        )}
+        
+        {/* ★追加：上限到達時のメッセージ（目立つようにオレンジ色にします） */}
+        {message === 'rate_limit' && (
+          <div className="bg-orange-50 text-orange-700 p-4 rounded-md text-sm text-center mb-2 font-medium border border-orange-200">
+            {dict.auth.rateLimitError}
+          </div>
+        )}
+
+        {/* 汎用エラーメッセージ */}
+        {message === 'error' && (
+          <div className="bg-red-50 text-red-600 p-4 rounded-md text-sm text-center mb-2 font-medium border border-red-200">
+            {dict.auth.generalError}
+          </div>
+        )}
+        
+        <label className="text-sm font-medium text-gray-700" htmlFor="email">{dict.auth.emailLabel}</label>
+        <input
+          className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          name="email"
+          type="email"
+          placeholder={dict.auth.emailPlaceholder}
+          required
+        />
+        
+        <div className="flex flex-col gap-2 mt-4">
+          <button type="submit" className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors font-medium">
+            {dict.auth.sendResetLink}
+          </button>
+        </div>
+
+        <div className="mt-4 text-center text-sm text-gray-600 border-t border-gray-100 pt-4">
+          <Link href={`/${lang}/login`} className="text-blue-600 hover:underline font-medium">
+            {dict.auth.backToLogin}
+          </Link>
+        </div>
+      </form>
+    </div>
+  )
+}
+</file>
+
+<file path="app/[lang]/section/[id]/page.tsx">
+import { createClient } from '@/utils/supabase/server'
+import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import { getDictionary } from '@/utils/get-dictionary'
+import LanguageSwitcher from '@/app/components/LanguageSwitcher'
+
+export const runtime = 'edge';
+
+export default async function SectionPage({ 
+  params 
+}: { 
+  params: Promise<{ lang: 'ja' | 'en', id: string }> 
+}) {
+  const { lang, id: sectionId } = await params
+  const dict = await getDictionary(lang)
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect(`/${lang}/login`)
+
+  const { data: videos } = await supabase
+    .from('videos').select('*').like('title', `${sectionId}-%`)
+
+  const sortedVideos = videos?.sort((a, b) => {
+    const aNum = parseInt(a.title.match(/-(\d+)/)?.[1] || '0')
+    const bNum = parseInt(b.title.match(/-(\d+)/)?.[1] || '0')
+    return aNum - bNum
+  }) || []
+
+  const { data: history } = await supabase
+    .from('viewing_history').select('vimeo_video_id').eq('user_id', user.id)
+  
+  const viewedIds = new Set(history?.map(h => h.vimeo_video_id) || [])
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-4 md:p-8 relative">
+      <div className="absolute top-6 right-6">
+        <LanguageSwitcher currentLang={lang} />
+      </div>
+
+      <div className="max-w-6xl mx-auto mt-8">
+        <div className="mb-8">
+          <Link href={`/${lang}/dashboard`} className="text-blue-600 hover:underline text-sm mb-4 inline-block">
+            {dict.section.backToDashboard}
+          </Link>
+          <h1 className="text-2xl font-bold text-gray-800">
+            {dict.section.title.replace('{id}', sectionId)}
+          </h1>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {sortedVideos.map((video) => {
+            const isViewed = viewedIds.has(video.vimeo_id)
+            return (
+              <div key={video.id} className="bg-white rounded-lg border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">
+                <div className="aspect-video bg-gray-100 flex items-center justify-center relative">
+                  {video.thumbnail_url ? (
+                    <img src={video.thumbnail_url} alt={video.title} className="object-cover w-full h-full" />
+                  ) : (
+                    <span className="text-gray-400 font-medium">Video</span>
+                  )}
+                  {isViewed && (
+                    <div className="absolute top-2 right-2 bg-green-500 text-white text-xs px-2 py-1 rounded shadow-sm font-bold">
+                      {dict.section.viewed}
+                    </div>
+                  )}
+                </div>
+                <div className="p-4 flex flex-col justify-between">
+                  <h3 className="font-bold text-gray-900 mb-4">{video.title}</h3>
+                  <Link href={`/${lang}/video/${video.vimeo_id}`} className={`block w-full text-center px-4 py-2 font-medium text-sm rounded-md transition-colors ${
+                    isViewed ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white'
+                  }`}>
+                    {isViewed ? dict.section.watchAgain : dict.section.watch}
+                  </Link>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+</file>
+
+<file path="app/[lang]/signup/page.tsx">
+import { createClient } from '@/utils/supabase/server'
+import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import { headers } from 'next/headers' // ★URL取得のために追加
+import { getDictionary } from '@/utils/get-dictionary'
+import LanguageSwitcher from '@/app/components/LanguageSwitcher'
+import PasswordInput from '@/app/components/PasswordInput'
+
+export const runtime = 'edge';
+
+export default async function SignupPage({ 
+  params, 
+  searchParams 
+}: { 
+  params: Promise<{ lang: 'ja' | 'en' }>,
+  searchParams: Promise<{ message?: string }>
+}) {
+  const { lang } = await params;
+  const { message } = await searchParams;
+  const dict = await getDictionary(lang);
+
+  const signUp = async (formData: FormData) => {
+    'use server'
+    const email = formData.get('email') as string
+    const password = formData.get('password') as string
+    const currentLang = formData.get('lang') as string
+    
+    // ★追加：現在のサイトURL（origin）を取得します
+    const headersList = await headers()
+    const origin = headersList.get('origin') || 'http://localhost:3000'
+    
+    const supabase = await createClient()
+
+    // ★修正：signUp処理に options と emailRedirectTo を追加します
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: `${origin}/api/auth/callback?next=/${currentLang}/dashboard`,
+      }
+    })
+
+    if (error) {
+      return redirect(`/${currentLang}/signup?message=error`)
+    }
+    return redirect(`/${currentLang}/login?message=success`)
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 relative">
+      <div className="absolute top-6 right-6">
+        <LanguageSwitcher currentLang={lang} />
+      </div>
+      
+      <form action={signUp} className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
+        <input type="hidden" name="lang" value={lang} />
+        
+        <h1 className="text-2xl font-bold text-center mb-4 text-gray-800">{dict.auth.signupTitle}</h1>
+        
+        {message === 'error' && (
+          <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm text-center mb-2">
+            {dict.auth.signupError}
+          </div>
+        )}
+        
+        <label className="text-sm font-medium text-gray-700" htmlFor="email">{dict.auth.emailLabel}</label>
+        <input
+          className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-sans"
+          name="email"
+          type="email"
+          placeholder={dict.auth.emailPlaceholder}
+          required
+        />
+        
+        <label className="text-sm font-medium text-gray-700 mt-2" htmlFor="password">{dict.auth.passwordLabel}</label>
+        <PasswordInput 
+          name="password"
+          placeholder={dict.auth.passwordPlaceholder}
+          required={true}
+          minLength={6}
+          showText={dict.auth.showPassword}
+          hideText={dict.auth.hidePassword}
+        />
+        
+        <div className="flex flex-col gap-2 mt-6">
+          <button type="submit" className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors font-medium">
+            {dict.auth.signupButton}
+          </button>
+        </div>
+
+        <div className="mt-4 text-center text-sm text-gray-600 border-t border-gray-100 pt-4">
+          {dict.auth.toLoginText}{' '}
+          <Link href={`/${lang}/login`} className="text-blue-600 hover:underline font-medium">
+            {dict.auth.toLoginLink}
+          </Link>
+        </div>
+      </form>
+    </div>
+  )
+}
+</file>
+
+<file path="app/[lang]/update-password/page.tsx">
+import { createClient } from '@/utils/supabase/server'
+import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import { headers } from 'next/headers'
+import { getDictionary } from '@/utils/get-dictionary'
+import LanguageSwitcher from '@/app/components/LanguageSwitcher'
+
+export const runtime = 'edge';
+
+export default async function ResetPasswordPage({ 
+  params,
+  searchParams
+}: { 
+  params: Promise<{ lang: 'ja' | 'en' }>,
+  searchParams: Promise<{ message?: string }>
+}) {
+  const { lang } = await params;
+  const { message } = await searchParams;
+  const dict = await getDictionary(lang);
+
+  const requestReset = async (formData: FormData) => {
+    'use server'
+    const email = formData.get('email') as string
+    const currentLang = formData.get('lang') as string
+    
+    // 現在のサイトURL（origin）を取得します
+    const headersList = await headers()
+    const origin = headersList.get('origin') || 'http://localhost:3000'
+    
+    const supabase = await createClient()
+
+    // メールに記載するリンク先を、先ほど作ったコールバックAPI経由に設定します
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${origin}/api/auth/callback?next=/${currentLang}/update-password`,
+    })
+
+    if (error) {
+      return redirect(`/${currentLang}/reset-password?message=error`)
+    }
+    return redirect(`/${currentLang}/reset-password?message=success`)
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 relative">
+      <div className="absolute top-6 right-6">
+        <LanguageSwitcher currentLang={lang} />
+      </div>
+
+      <form action={requestReset} className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
+        <input type="hidden" name="lang" value={lang} />
+        
+        <h1 className="text-2xl font-bold text-center mb-2 text-gray-800">{dict.auth.resetPasswordTitle}</h1>
+        <p className="text-sm text-gray-600 text-center mb-4">{dict.auth.resetPasswordDesc}</p>
+        
+        {message === 'success' && (
+          <div className="bg-green-50 text-green-700 p-4 rounded-md text-sm text-center mb-2 font-medium">
+            {dict.auth.resetLinkSent}
+          </div>
+        )}
+        
+        <label className="text-sm font-medium text-gray-700" htmlFor="email">{dict.auth.emailLabel}</label>
+        <input
+          className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          name="email"
+          type="email"
+          placeholder={dict.auth.emailPlaceholder}
+          required
+        />
+        
+        <div className="flex flex-col gap-2 mt-4">
+          <button type="submit" className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors font-medium">
+            {dict.auth.sendResetLink}
+          </button>
+        </div>
+
+        <div className="mt-4 text-center text-sm text-gray-600 border-t border-gray-100 pt-4">
+          <Link href={`/${lang}/login`} className="text-blue-600 hover:underline font-medium">
+            {dict.auth.backToLogin}
+          </Link>
+        </div>
+      </form>
+    </div>
+  )
+}
+</file>
+
+<file path="app/[lang]/video/[id]/page.tsx">
+import { createClient } from '@/utils/supabase/server'
+import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import VideoPlayer from './VideoPlayer'
+import FavoriteButton from './FavoriteButton'
+import { getDictionary } from '@/utils/get-dictionary'
+import LanguageSwitcher from '@/app/components/LanguageSwitcher'
+
+export const runtime = 'edge';
+
+export default async function VideoPage({ 
+  params 
+}: { 
+  params: Promise<{ lang: 'ja' | 'en', id: string }> 
+}) {
+  const { lang, id: videoId } = await params
+  const dict = await getDictionary(lang)
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect(`/${lang}/login`)
+
+  const { data: subscription } = await supabase
+    .from('subscriptions').select('*').eq('user_id', user.id).eq('status', 'active').single()
+
+  if (!subscription) {
+    return (
+      <div className="min-h-screen p-8 bg-gray-50 flex flex-col items-center justify-center relative">
+        <div className="absolute top-6 right-6"><LanguageSwitcher currentLang={lang} /></div>
+        <p className="text-lg text-gray-800 mb-4">{dict.video.requireSubscription}</p>
+        <Link href={`/${lang}/pricing`} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+          {dict.video.toPricing}
+        </Link>
+      </div>
+    )
+  }
+
+  const planLimits: Record<string, number> = { light: 10, standard: 30, premium: 9999999 }
+  const limit = planLimits[subscription.plan_type] || 0
+
+  const { count } = await supabase
+    .from('viewing_history').select('*', { count: 'exact', head: true })
+    .eq('user_id', user.id)
+    .gte('viewed_at', subscription.current_period_start)
+    .lte('viewed_at', subscription.current_period_end)
+
+  const currentCount = count || 0
+
+  const { data: alreadyViewed } = await supabase
+    .from('viewing_history').select('id').eq('user_id', user.id).eq('vimeo_video_id', videoId)
+    .gte('viewed_at', subscription.current_period_start).maybeSingle()
+
+  if (!alreadyViewed && currentCount >= limit) {
+    return (
+      <div className="min-h-screen p-8 bg-gray-50 flex flex-col items-center justify-center relative">
+        <div className="absolute top-6 right-6"><LanguageSwitcher currentLang={lang} /></div>
+        <p className="text-2xl font-bold text-red-600 mb-4">
+          {dict.video.limitReachedTitle.replace('{limit}', limit.toString())}
+        </p>
+        <p className="text-gray-600 mb-6">{dict.video.limitMessage}</p>
+        <Link href={`/${lang}/dashboard`} className="text-blue-600 underline hover:text-blue-800">
+          {dict.video.backToDashboard}
+        </Link>
+      </div>
+    )
+  }
+
+  const { data: favorite } = await supabase
+    .from('favorites').select('id').eq('user_id', user.id).eq('vimeo_video_id', videoId).maybeSingle()
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-4 md:p-8">
+      <div className="max-w-4xl mx-auto mt-8 md:mt-0">
+        
+        {/* ヘッダー部分 */}
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
+          <div className="flex items-center gap-4">
+            <h1 className="text-2xl font-bold text-gray-800">{dict.video.playerTitle}</h1>
+            <FavoriteButton 
+              videoId={videoId} 
+              initialIsFavorited={!!favorite} 
+              textAdd={dict.video.favoriteAdd}
+              textRemove={dict.video.favoriteRemove}
+            />
+          </div>
+          <div className="flex items-center">
+            {/* 言語切り替えボタンと戻るボタンを横並びに配置 */}
+            <LanguageSwitcher currentLang={lang} />
+            <Link href={`/${lang}/dashboard`} className="text-sm text-blue-600 hover:underline border border-blue-200 px-3 py-1.5 rounded-md bg-white text-center">
+              {dict.video.backToDashboard}
+            </Link>
+          </div>
+        </div>
+        
+        <VideoPlayer 
+          videoId={videoId} 
+          alreadyViewed={!!alreadyViewed} 
+          textCompleted={dict.video.watchCompleted}
+        />
+
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex justify-between items-center">
+          <div>
+            <p className="text-sm text-gray-500 mb-1">{dict.video.currentPlan}</p>
+            <p className="text-lg font-semibold text-blue-900 capitalize">{subscription.plan_type}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-sm text-gray-500 mb-1">{dict.video.monthlyWatchCount}</p>
+            <p className="text-lg font-semibold text-gray-800">
+              {currentCount} <span className="text-sm font-normal text-gray-500">/ {subscription.plan_type === 'premium' ? dict.video.unlimited : `${limit}${dict.video.videosUnit}`}</span>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 </file>
@@ -2643,6 +2643,27 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ received: true })
 }
+</file>
+
+<file path="eslint.config.mjs">
+import { defineConfig, globalIgnores } from "eslint/config";
+import nextVitals from "eslint-config-next/core-web-vitals.js";
+import nextTs from "eslint-config-next/typescript.js";
+
+const eslintConfig = defineConfig([
+  ...nextVitals,
+  ...nextTs,
+  // Override default ignores of eslint-config-next.
+  globalIgnores([
+    // Default ignores of eslint-config-next:
+    ".next/**",
+    "out/**",
+    "build/**",
+    "next-env.d.ts",
+  ]),
+]);
+
+export default eslintConfig;
 </file>
 
 <file path="package.json">

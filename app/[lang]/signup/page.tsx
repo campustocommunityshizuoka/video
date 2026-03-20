@@ -20,28 +20,38 @@ export default async function SignupPage({
 
   const signUp = async (formData: FormData) => {
     'use server'
-    const email = formData.get('email') as string
-    const password = formData.get('password') as string
-    const currentLang = formData.get('lang') as string
-    
-    // ★追加：現在のサイトURL（origin）を取得します
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+    let redirectUrl = ''
 
-    const supabase = await createClient()
+    try {
+      const email = formData.get('email') as string
+      const password = formData.get('password') as string
+      const currentLang = formData.get('lang') as string
+      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+      
+      const supabase = await createClient()
 
-    // ★修正：signUp処理に options と emailRedirectTo を追加します
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${siteUrl}/api/auth/callback?next=/${currentLang}/dashboard`,
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: `${siteUrl}/api/auth/callback?next=/${currentLang}/dashboard`,
+        }
+      })
+
+      if (error) {
+        console.error('新規登録エラー:', error.message)
+        redirectUrl = `/${currentLang}/signup?message=error`
+      } else {
+        redirectUrl = `/${currentLang}/login?message=success`
       }
-    })
-
-    if (error) {
-      return redirect(`/${currentLang}/signup?message=error`)
+    } catch (e: any) {
+      console.error('予期せぬシステムエラー:', e.message)
+      redirectUrl = `/ja/signup?message=error`
     }
-    return redirect(`/${currentLang}/login?message=success`)
+
+    if (redirectUrl) {
+      redirect(redirectUrl)
+    }
   }
 
   return (
@@ -63,7 +73,7 @@ export default async function SignupPage({
         
         <label className="text-sm font-medium text-gray-700" htmlFor="email">{dict.auth.emailLabel}</label>
         <input
-          className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-sans"
+          className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-sans text-gray-900 bg-white"
           name="email"
           type="email"
           placeholder={dict.auth.emailPlaceholder}
