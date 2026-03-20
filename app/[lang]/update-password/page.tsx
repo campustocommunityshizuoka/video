@@ -5,6 +5,7 @@ import LanguageSwitcher from '@/app/components/LanguageSwitcher'
 import PasswordInput from '@/app/components/PasswordInput'
 
 export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
 
 export default async function UpdatePasswordPage({ 
   params,

@@ -6,6 +6,7 @@ import { getDictionary } from '@/utils/get-dictionary'
 import LanguageSwitcher from '@/app/components/LanguageSwitcher'
 
 export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
 
 export default async function ResetPasswordPage({ 
   params,

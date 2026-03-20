@@ -6,6 +6,7 @@ import LanguageSwitcher from '@/app/components/LanguageSwitcher'
 import PasswordInput from '@/app/components/PasswordInput'
 
 export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
 
 export default async function LoginPage({ 
   params, 
@@ -20,20 +21,35 @@ export default async function LoginPage({
 
   const signIn = async (formData: FormData) => {
     'use server'
-    const email = formData.get('email') as string
-    const password = formData.get('password') as string
-    const currentLang = formData.get('lang') as string
-    const supabase = await createClient()
+    let redirectUrl = ''
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
+    try {
+      const email = formData.get('email') as string
+      const password = formData.get('password') as string
+      const currentLang = formData.get('lang') as string
+      const supabase = await createClient()
 
-    if (error) {
-      return redirect(`/${currentLang}/login?message=error`)
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
+
+      if (error) {
+        console.error('ログインエラー:', error.message)
+        redirectUrl = `/${currentLang}/login?message=error`
+      } else {
+        redirectUrl = `/${currentLang}/dashboard`
+      }
+    } catch (e: any) {
+      console.error('予期せぬシステムエラー:', e.message)
+      // エラーでクラッシュさせず、安全にエラーメッセージ付きのURLへ戻します
+      redirectUrl = `/ja/login?message=error`
     }
-    return redirect(`/${currentLang}/dashboard`)
+
+    // Next.jsの仕様上、redirectは必ずtry...catchブロックの外で実行します
+    if (redirectUrl) {
+      redirect(redirectUrl)
+    }
   }
 
   return (
