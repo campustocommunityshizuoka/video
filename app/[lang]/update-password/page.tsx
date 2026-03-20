@@ -25,10 +25,11 @@ export default async function UpdatePasswordPage({
       <div className="absolute top-6 right-6">
         <LanguageSwitcher currentLang={lang} />
       </div>
-
-      <form action={updatePasswordAction} className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
-        <input type="hidden" name="lang" value={lang} />
         
+      {/* action属性をAPIのURLに変更し、method="POST"を追加します */}
+      <form action="/api/auth/update-password" method="POST" className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
+        <input type="hidden" name="lang" value={lang} />
+
         <h1 className="text-2xl font-bold text-center mb-2 text-gray-800">{dict.auth.updatePasswordTitle}</h1>
         
         {message === 'error' && (
@@ -36,6 +37,7 @@ export default async function UpdatePasswordPage({
             {dict.auth.generalError}
           </div>
         )}
+        
         
         <label className="text-sm font-medium text-gray-700 mt-2" htmlFor="password">{dict.auth.newPasswordLabel}</label>
         <PasswordInput 

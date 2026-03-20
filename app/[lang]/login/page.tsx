@@ -30,7 +30,6 @@ export default async function LoginPage({
 
       <form action="/api/auth/login" method="POST" className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
         <input type="hidden" name="lang" value={lang} />
-        <input type="hidden" name="lang" value={lang} />
         
         <h1 className="text-2xl font-bold text-center mb-4 text-gray-800">{dict.auth.loginTitle}</h1>
         

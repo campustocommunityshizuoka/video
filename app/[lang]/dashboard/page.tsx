@@ -144,7 +144,8 @@ export default async function DashboardPage({ params }: { params: Promise<{ lang
                 {dict.dashboard.adminButton}
               </Link>
             )}
-            <form action={signOutAction}>
+            {/* action属性をAPIのURLに変更し、method="POST"を追加します */}
+            <form action="/api/auth/signout" method="POST">
               <input type="hidden" name="lang" value={lang} />
               <button className="px-4 py-2 text-sm text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200">
                 {dict.dashboard.logoutButton}

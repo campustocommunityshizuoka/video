@@ -28,7 +28,7 @@ export default async function SignupPage({
         <LanguageSwitcher currentLang={lang} />
       </div>
       
-      <form action={signUpAction} className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
+      <form action="/api/auth/signup" method="POST" className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
         <input type="hidden" name="lang" value={lang} />
         
         <h1 className="text-2xl font-bold text-center mb-4 text-gray-800">{dict.auth.signupTitle}</h1>

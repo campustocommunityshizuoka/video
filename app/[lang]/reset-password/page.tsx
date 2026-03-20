@@ -28,7 +28,7 @@ export default async function ResetPasswordPage({
         <LanguageSwitcher currentLang={lang} />
       </div>
 
-      <form action={requestResetAction} className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
+      <form action="/api/auth/reset-password" method="POST" className="flex flex-col w-full max-w-md p-8 bg-white rounded-lg shadow-md gap-4">
         <input type="hidden" name="lang" value={lang} />
         
         <h1 className="text-2xl font-bold text-center mb-2 text-gray-800">{dict.auth.resetPasswordTitle}</h1>
