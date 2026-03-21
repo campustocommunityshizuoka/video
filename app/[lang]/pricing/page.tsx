@@ -1,6 +1,5 @@
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
-import Stripe from 'stripe'
 import { getDictionary } from '@/utils/get-dictionary'
 import LanguageSwitcher from '@/app/components/LanguageSwitcher'
 
@@ -20,47 +19,10 @@ export default async function PricingPage({ params }: { params: Promise<{ lang: 
   const { data: existingSubscription } = await supabase
     .from('subscriptions').select('*').eq('user_id', user.id).eq('status', 'active').limit(1).maybeSingle()
 
-  // ★将来のための準備：言語（通貨）に応じた価格IDを返す関数
   const getPriceId = (plan: 'light' | 'standard' | 'premium', currentLang: string) => {
-    /* * 将来、StripeダッシュボードでUSD用の価格を作成したら、
-     * ここで process.env.STRIPE_PRICE_ID_LIGHT_USD などを返すように変更してください。
-     * 現在はプレースホルダーとして、どちらの言語でも既存のIDを返しています。
-     */
     if (plan === 'light') return process.env.STRIPE_PRICE_ID_LIGHT;
     if (plan === 'standard') return process.env.STRIPE_PRICE_ID_STANDARD;
     if (plan === 'premium') return process.env.STRIPE_PRICE_ID_PREMIUM;
-  }
-
-const handleCheckout = async (formData: FormData) => {
-    'use server'
-    const currentLang = formData.get('lang') as string
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, { apiVersion: '2026-02-25.clover' })
-
-    const supabaseAdmin = await createClient()
-    const { data: checkSub } = await supabaseAdmin
-      .from('subscriptions').select('id').eq('user_id', user.id).eq('status', 'active').limit(1)
-
-    if (checkSub && checkSub.length > 0) {
-      const errorMsg = currentLang === 'ja' ? 'すでにプランを契約中のため、追加購入はできません' : 'You are already subscribed to a plan. Additional purchases are not allowed.'
-      redirect(`/${currentLang}/dashboard?message=` + encodeURIComponent(errorMsg))
-    }
-
-    const priceId = formData.get('priceId') as string
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
-
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items: [{ price: priceId, quantity: 1 }],
-      mode: 'subscription',
-      success_url: `${siteUrl}/${currentLang}/dashboard?success=true`,
-      cancel_url: `${siteUrl}/${currentLang}/pricing?canceled=true`,
-      customer_email: user.email,
-      // ★確認：決済画面の表示言語を強制的に指定します
-      locale: currentLang === 'ja' ? 'ja' : 'en',
-      metadata: { userId: user.id },
-    })
-
-    if (session.url) redirect(session.url)
   }
 
   const isSubscribed = !!existingSubscription
@@ -94,9 +56,9 @@ const handleCheckout = async (formData: FormData) => {
                 <span className="text-4xl font-extrabold text-gray-900">{dict.pricing.priceLight}</span>
                 <span className="text-base font-medium text-gray-500">{dict.pricing.perMonth}</span>
               </p>
-              <form action={handleCheckout} className="mt-8">
+              <form action="/api/checkout" method="POST" className="mt-8">
                 <input type="hidden" name="lang" value={lang} />
-                <input type="hidden" name="priceId" value={getPriceId('light', lang)} />
+                <input type="hidden" name="priceId" value={getPriceId('light', lang) || ''} />
                 <button 
                   type="submit" 
                   disabled={isSubscribed}
@@ -118,9 +80,9 @@ const handleCheckout = async (formData: FormData) => {
                 <span className="text-4xl font-extrabold text-gray-900">{dict.pricing.priceStandard}</span>
                 <span className="text-base font-medium text-gray-500">{dict.pricing.perMonth}</span>
               </p>
-              <form action={handleCheckout} className="mt-8">
+              <form action="/api/checkout" method="POST" className="mt-8">
                 <input type="hidden" name="lang" value={lang} />
-                <input type="hidden" name="priceId" value={getPriceId('standard', lang)} />
+                <input type="hidden" name="priceId" value={getPriceId('standard', lang) || ''} />
                 <button 
                   type="submit" 
                   disabled={isSubscribed}
@@ -142,9 +104,9 @@ const handleCheckout = async (formData: FormData) => {
                 <span className="text-4xl font-extrabold text-gray-900">{dict.pricing.pricePremium}</span>
                 <span className="text-base font-medium text-gray-500">{dict.pricing.perMonth}</span>
               </p>
-              <form action={handleCheckout} className="mt-8">
+              <form action="/api/checkout" method="POST" className="mt-8">
                 <input type="hidden" name="lang" value={lang} />
-                <input type="hidden" name="priceId" value={getPriceId('premium', lang)} />
+                <input type="hidden" name="priceId" value={getPriceId('premium', lang) || ''} />
                 <button 
                   type="submit" 
                   disabled={isSubscribed}
