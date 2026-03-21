@@ -46,13 +46,14 @@ const handleCheckout = async (formData: FormData) => {
     }
 
     const priceId = formData.get('priceId') as string
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [{ price: priceId, quantity: 1 }],
       mode: 'subscription',
-      success_url: `http://localhost:3000/${currentLang}/dashboard?success=true`,
-      cancel_url: `http://localhost:3000/${currentLang}/pricing?canceled=true`,
+      success_url: `${siteUrl}/${currentLang}/dashboard?success=true`,
+      cancel_url: `${siteUrl}/${currentLang}/pricing?canceled=true`,
       customer_email: user.email,
       // ★確認：決済画面の表示言語を強制的に指定します
       locale: currentLang === 'ja' ? 'ja' : 'en',
