@@ -306,111 +306,6 @@ export async function POST(request: Request) {
 }
 </file>
 
-<file path="app/api/auth/callback/route.ts">
-import { NextResponse } from 'next/server'
-import { createClient } from '@/utils/supabase/server'
-
-export const runtime = 'edge';
-
-export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url)
-  const code = searchParams.get('code')
-  const next = searchParams.get('next') ?? '/'
-
-  if (code) {
-    const supabase = await createClient()
-    const { data, error } = await supabase.auth.exchangeCodeForSession(code)
-
-    if (!error && data?.session) {
-      const user = data.session.user;
-
-      const { data: subscription } = await supabase
-        .from('subscriptions')
-        .select('plan_type')
-        .eq('user_id', user.id)
-        .maybeSingle();
-        
-      if (subscription?.plan_type === 'light' || subscription?.plan_type === 'standard') {
-        // アクセストークンの末尾など、このセッション固有の値を識別子とする
-        const sessionId = data.session.access_token.slice(-20);
-        
-        await supabase
-          .from('subscriptions')
-          .update({ current_session_id: sessionId })
-          .eq('user_id', user.id);
-          
-        console.log(`【セッション更新】: ユーザー ${user.id} (${subscription.plan_type})`);
-      }
-
-      return NextResponse.redirect(`${origin}${next}`)
-    } else {
-      console.error('【認証エラー発生】:', error?.message)
-    }
-  } else {
-    console.error('【認証エラー発生】: URLに認証コード(code)が含まれていません')
-  }
-
-  // エラー時はトップページへ戻します
-  return NextResponse.redirect(`${origin}/?message=auth-error`)
-}
-</file>
-
-<file path="app/api/auth/login/route.ts">
-// app/api/auth/login/route.ts
-import { NextResponse } from 'next/server'
-import { createClient } from '@/utils/supabase/server'
-
-export const runtime = 'edge';
-
-export async function POST(request: Request) {
-  // 標準的なフォームデータを受け取ります
-  const formData = await request.formData()
-  const email = formData.get('email') as string
-  const password = formData.get('password') as string
-  const currentLang = formData.get('lang') as string || 'ja'
-  
-  let redirectUrl = ''
-
-  try {
-    const supabase = await createClient()
-    const { data , error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-
-    if (error) {
-      console.error('ログインエラー:', error.message)
-      redirectUrl = `/${currentLang}/login?message=error`
-    } else if (data.session) {
-      // ★ ここから追加：セッションIDをDBに記録
-      const user = data.session.user
-      const { data: sub } = await supabase
-        .from('subscriptions')
-        .select('plan_type')
-        .eq('user_id', user.id)
-        .maybeSingle()
-
-      // ライト・スタンダードのみ制限
-      if (sub?.plan_type === 'light' || sub?.plan_type === 'standard') {
-        const sessionId = data.session.access_token.slice(-20)
-        await supabase
-          .from('subscriptions')
-          .update({ current_session_id: sessionId })
-          .eq('user_id', user.id)
-      }
-      
-      redirectUrl = `/${currentLang}/dashboard`
-    }
-  } catch (e: any) {
-    console.error('予期せぬシステムエラー:', e.message)
-    redirectUrl = `/ja/login?message=error`
-  }
-
-  // 303 (See Other) を使って、POSTリクエストから安全にリダイレクトさせます
-  return NextResponse.redirect(new URL(redirectUrl, request.url), 303)
-}
-</file>
-
 <file path="app/api/auth/reset-password/route.ts">
 import { NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
@@ -529,71 +424,6 @@ export async function POST(request: Request) {
 }
 </file>
 
-<file path="app/api/checkout/route.ts">
-import { NextResponse } from 'next/server'
-import { createClient } from '@/utils/supabase/server'
-import Stripe from 'stripe'
-
-export const runtime = 'edge';
-
-export async function POST(request: Request) {
-  const formData = await request.formData()
-  const currentLang = formData.get('lang') as string || 'ja'
-  const priceId = formData.get('priceId') as string
-  
-  // URLから動的にオリジンを取得
-  const origin = new URL(request.url).origin
-
-  const isAddOn = priceId === process.env.STRIPE_PRICE_ID_ADDON;
-
-  try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-
-    if (!user) {
-      return NextResponse.redirect(new URL(`/${currentLang}/login`, request.url), 303)
-    }
-
-    const { data: checkSub } = await supabase
-      .from('subscriptions').select('id').eq('user_id', user.id).eq('status', 'active').limit(1)
-
-    if (!isAddOn && checkSub && checkSub.length > 0) {
-      const errorMsg = currentLang === 'ja' ? 'すでにプランを契約中のため、追加購入はできません' : 'You are already subscribed to a plan. Additional purchases are not allowed.'
-      return NextResponse.redirect(new URL(`/${currentLang}/dashboard?message=${encodeURIComponent(errorMsg)}`, request.url), 303)
-    }
-
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
-      apiVersion: '2026-02-25.clover',
-    })
-
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items: [{ price: priceId, quantity: 1 }],
-      // 追加枠なら 'payment' (単発払い)、プランなら 'subscription' (継続)
-      mode: isAddOn ? 'payment' : 'subscription', 
-      success_url: `${origin}/${currentLang}/dashboard?success=true`,
-      cancel_url: `${origin}/${currentLang}/pricing?canceled=true`,
-      customer_email: user.email,
-      locale: currentLang === 'ja' ? 'ja' : 'en',
-      metadata: { 
-        userId: user.id,
-        purchaseType: isAddOn ? 'addon' : 'subscription' // Webhookで判別するために必須
-      },
-    })
-
-    if (session.url) {
-      return NextResponse.redirect(session.url, 303)
-    }
-    
-    return NextResponse.redirect(new URL(`/${currentLang}/pricing`, request.url), 303)
-    
-  } catch (error: any) {
-    console.error('Checkout Error:', error)
-    return NextResponse.redirect(new URL(`/${currentLang}/pricing?error=true`, request.url), 303)
-  }
-}
-</file>
-
 <file path="app/api/favorites/route.ts">
 import { NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
@@ -627,93 +457,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ favorited: true })
     }
   } catch (error) {
-    return NextResponse.json({ error: 'Server Error' }, { status: 500 })
-  }
-}
-</file>
-
-<file path="app/api/record-view/route.ts">
-import { NextResponse } from 'next/server'
-import { createClient } from '@/utils/supabase/server'
-
-export const runtime = 'edge';
-
-export async function POST(req: Request) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  try {
-    const { videoId } = await req.json()
-
-    const { data: subscription } = await supabase
-      .from('subscriptions')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('status', 'active')
-      .single()
-
-    if (!subscription) return NextResponse.json({ error: 'No active plan' }, { status: 403 })
-
-    // ★ 修正：今月ではなく「今期の契約期間（1年間）」ですでに見たかチェック
-    const { data: alreadyViewed } = await supabase
-      .from('viewing_history')
-      .select('id')
-      .eq('user_id', user.id)
-      .eq('vimeo_video_id', videoId)
-      .gte('viewed_at', subscription.current_period_start) // 契約開始日（1年前）から
-      .lte('viewed_at', subscription.current_period_end)   // 契約終了日まで
-      .maybeSingle()
-
-    // すでにこの期間内に視聴済みなら、重複して記録しない
-    if (alreadyViewed)
-      return NextResponse.json({ success: true })
-
-    // 今期の総視聴本数をカウント（年間）
-    const { count } = await supabase
-      .from('viewing_history').select('*', { count: 'exact', head: true })
-      .eq('user_id', user.id)
-      .gte('viewed_at', subscription.current_period_start)
-      .lte('viewed_at', subscription.current_period_end)
-
-    const currentCount = count || 0
-    // 年契約に合わせた制限（例：ライトなら年120本など。必要に応じて数値を調整してください）
-    const planLimits: Record<string, number> = { light: 10, standard: 30, premium: 1000 }
-    const limit = planLimits[subscription.plan_type] || 0
-
-    if (currentCount >= limit) {
-      // チケット（買い足し枠）のチェックロジックはそのまま維持
-      const { data: credit } = await supabase
-        .from('video_credits')
-        .select('*')
-        .eq('user_id', user.id)
-        .gt('remaining', 0)
-        .gt('expires_at', new Date().toISOString())
-        .order('expires_at', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
-      if (credit) {
-        await supabase
-          .from('video_credits')
-          .update({ remaining: credit.remaining - 1 })
-          .eq('id', credit.id);
-      } else {
-        return NextResponse.json({ error: 'Yearly limit reached' }, { status: 403 })
-      }
-    }
-
-    // 新しく視聴履歴を挿入
-    await supabase.from('viewing_history').insert({
-      user_id: user.id,
-      vimeo_video_id: videoId
-    });
-
-    return NextResponse.json({ success: true })
-
-    } catch (error) {
-    // ★ ここで try を閉じ、catch ブロックを配置します
-    console.error('Record View Error:', error)
     return NextResponse.json({ error: 'Server Error' }, { status: 500 })
   }
 }
@@ -786,369 +529,6 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
-}
-</file>
-
-<file path="dictionaries/en.json">
-{
-  "metadata": {
-    "title": "Nihongo Learning | Japanese Learning Platform",
-    "description": "Unlimited access to over 100 high-quality video lessons. Master Japanese at your own pace."
-  },
-  "home": {
-    "title": "Nihongo Learning",
-    "login": "Log in",
-    "startFree": "Start for Free",
-    "heroTitle1": "Master Japanese",
-    "heroTitle2": "at your own pace.",
-    "heroDescription": "Unlimited access to over 100 high-quality video lessons. Master everything from daily conversation to business Japanese with our structured curriculum.",
-    "startNow": "Start Learning Now",
-    "viewPricing": "View Pricing Plans",
-    "reasonsTitle": "3 Reasons to Choose Us",
-    "reasonsDesc": "We provide the optimal environment for learning Japanese efficiently.",
-    "feature1Title": "High-Quality Video Lessons",
-    "feature1Desc": "Easy-to-understand explanations by professional Japanese teachers. Watch them anytime, anywhere, as many times as you like.",
-    "feature2Title": "Track Your Progress",
-    "feature2Desc": "Visualize your learning achievement for each section with percentages. Keep your motivation high as you learn.",
-    "feature3Title": "Flexible Pricing Plans",
-    "feature3Desc": "We offer 3 plans to suit your learning pace, from a Light plan to an unlimited Premium plan.",
-    "pricingTitle": "Simple Pricing",
-    "pricingDesc": "Registration is free. Create an account first, then choose the plan that suits you.",
-    "planLight": "Light",
-    "planStandard": "Standard",
-    "planPremium": "Premium",
-    "perMonth": " / year",
-    "mostPopular": "Most Popular",
-    "lightFeature1": "Watch up to 10 videos per year",
-    "standardFeature1": "Watch up to 30 videos per year",
-    "premiumFeature1": "Unlimited video access",
-    "featureProgress": "Progress tracking",
-    "featureAllAccess": "Access to all sections",
-    "ctaTitle": "Let's open the door to a new language.",
-    "ctaDesc": "Account creation takes only 1 minute.",
-    "createFreeAccount": "Create a Free Account",
-    "footerRights": "Nihongo Learning. All rights reserved."
-  },
-  "auth": {
-    "loginTitle": "Log In",
-    "signupTitle": "Create an Account",
-    "emailLabel": "Email Address",
-    "emailPlaceholder": "you@example.com",
-    "passwordLabel": "Password",
-    "passwordPlaceholder": "••••••••",
-    "loginButton": "Log In",
-    "signupButton": "Sign Up",
-    "toSignupText": "Don't have an account?",
-    "toSignupLink": "Sign up here",
-    "toLoginText": "Already have an account?",
-    "toLoginLink": "Log in here",
-    "loginError": "Failed to log in. Please check your email and password.",
-    "signupError": "Failed to sign up.",
-    "signupSuccess": "A confirmation email has been sent. Please click the link in the email to complete registration.",
-    "showPassword": "Show",
-    "hidePassword": "Hide",
-    "forgotPassword": "Forgot your password?",
-    "resetPasswordTitle": "Reset Password",
-    "resetPasswordDesc": "Enter your registered email address. We will send you a link to reset your password.",
-    "sendResetLink": "Send Reset Link",
-    "resetLinkSent": "A password reset email has been sent. Please click the link in the email to reset your password.",
-    "updatePasswordTitle": "Set New Password",
-    "updatePasswordButton": "Update Password",
-    "updatePasswordSuccess": "Your password has been updated. Redirecting to the dashboard...",
-    "backToLogin": "Back to Login",
-    "newPasswordLabel": "New Password",
-    "rateLimitError": "Email sending limit reached. For security reasons, please wait a while before trying again.",
-    "generalError": "An error occurred. Please check your email address and try again."
-  },
-  "dashboard": {
-    "title": "Learning Dashboard",
-    "adminButton": "Admin Dashboard",
-    "logoutButton": "Log Out",
-    "welcome": "Welcome, ",
-    "honorific": "",
-    "subscriptionStatus": "Current Subscription Status",
-    "renewalDate": "Renewal Date: ",
-    "manageSubscription": "Manage Subscription",
-    "noSubscription": "No active subscription.",
-    "choosePlan": "Choose a Plan",
-    "planLight": "Light Plan (10 videos/mo)",
-    "planStandard": "Standard Plan (30 videos/mo)",
-    "planPremium": "Premium Plan (Unlimited)",
-    "planNone": "Unsubscribed",
-    "continueWatching": "Continue Watching",
-    "recentlyWatched": "Recently Watched",
-    "favorites": "Favorites",
-    "watch": "▶ Watch",
-    "courseList": "Course List",
-    "section": "Section ",
-    "videosCount": " videos",
-    "progress": "Progress: ",
-    "completed": " Completed",
-    "remainingTickets": "Extra Tickets: {count} remaining",
-    "buyTickets": "Buy 10 Extra Video Tickets ($15.00)"
-  },
-  "section": {
-    "backToDashboard": "← Back to Dashboard",
-    "title": "Videos for Section {id}",
-    "viewed": "✓ Viewed",
-    "watchAgain": "Watch Again",
-    "watch": "Watch"
-  },
-  "video": {
-    "requireSubscription": "A subscription plan is required to watch videos.",
-    "toPricing": "Go to Pricing",
-    "limitReachedTitle": "Yearly viewing limit reached ({limit} videos)",
-    "limitMessage": "To watch more videos, please wait for next year's renewal or consider upgrading your plan or purchases additional Tickets.",
-    "backToDashboard": "← Back to Dashboard",
-    "playerTitle": "Video Player",
-    "currentPlan": "Current Plan",
-    "yearlyWatchCount": "Yearly Videos Watched",
-    "unlimited": "Unlimited",
-    "videosUnit": " videos",
-    "favoriteAdd": "Add to Favorites",
-    "favoriteRemove": "Remove Favorite",
-    "watchCompleted": "✓ Completed"
-  },
-  "pricing": {
-    "title": "Choose a Learning Plan",
-    "subtitle": "Select the plan that best fits your learning pace.",
-    "noticeTitle": "Notice",
-    "noticeMessage": "You are already subscribed to a plan. If you wish to cancel or change your current plan, please contact the administrator.",
-    "planLight": "Light Plan",
-    "planStandard": "Standard Plan",
-    "planPremium": "Premium Plan",
-    "priceLight": "$10.00",
-    "priceStandard": "$30.00",
-    "pricePremium": "$50.00",
-    "perMonth": "/year",
-    "subscribed": "Subscribed",
-    "selectPlan": "Select Plan",
-    "alreadySubscribedError": "You are already subscribed to a plan. Additional purchases are not allowed."
-  }
-}
-</file>
-
-<file path="dictionaries/ja.json">
-{
-  "metadata": {
-    "title": "Nihongo Learning | 外国人のための日本語学習",
-    "description": "100本以上の高品質な授業動画が見放題。あなたのペースで確実な日本語力を身につけましょう。"
-  },
-  "home": {
-    "title": "Nihongo Learning",
-    "login": "ログイン",
-    "startFree": "無料ではじめる",
-    "heroTitle1": "あなたのペースで、",
-    "heroTitle2": "確実な日本語力を。",
-    "heroDescription": "100本以上の高品質な授業動画が見放題。体系化されたカリキュラムで、日常会話からビジネス日本語まで、最短ルートでマスターしましょう。",
-    "startNow": "今すぐ学習をスタート",
-    "viewPricing": "料金プランを見る",
-    "reasonsTitle": "選ばれる3つの理由",
-    "reasonsDesc": "効率的に日本語を習得するための、最適な環境が整っています。",
-    "feature1Title": "圧倒的な質の授業動画",
-    "feature1Desc": "プロの日本語教師による、わかりやすい解説動画。いつでもどこでも、何度でも見返すことができます。",
-    "feature2Title": "進捗がひと目でわかる",
-    "feature2Desc": "セクションごとの学習達成度をパーセンテージで可視化。モチベーションを維持しながら学習を進められます。",
-    "feature3Title": "選べる柔軟な料金プラン",
-    "feature3Desc": "あなたの学習ペースに合わせて、ライトから無制限のプレミアムまで、3つのプランをご用意しています。",
-    "pricingTitle": "シンプルな料金体系",
-    "pricingDesc": "登録は無料です。まずはアカウントを作成し、あなたに合ったプランをお選びください。",
-    "planLight": "ライト",
-    "planStandard": "スタンダード",
-    "planPremium": "プレミアム",
-    "perMonth": " / 年",
-    "mostPopular": "一番人気",
-    "lightFeature1": "年間 10本まで視聴可能",
-    "standardFeature1": "年間 30本まで視聴可能",
-    "premiumFeature1": "動画視聴 無制限",
-    "featureProgress": "進捗管理機能",
-    "featureAllAccess": "全セクションへのアクセス",
-    "ctaTitle": "さあ、新しい言語の扉を開きましょう。",
-    "ctaDesc": "アカウント作成はわずか1分で完了します。",
-    "createFreeAccount": "無料でアカウントを作成する",
-    "footerRights": "Nihongo Learning. All rights reserved."
-  },
-  "auth": {
-    "loginTitle": "ログイン",
-    "signupTitle": "新規アカウント登録",
-    "emailLabel": "メールアドレス",
-    "emailPlaceholder": "you@example.com",
-    "passwordLabel": "パスワード",
-    "passwordPlaceholder": "••••••••",
-    "loginButton": "ログイン",
-    "signupButton": "登録する",
-    "toSignupText": "アカウントをお持ちでないですか？",
-    "toSignupLink": "新規登録はこちら",
-    "toLoginText": "すでにアカウントをお持ちですか？",
-    "toLoginLink": "ログインはこちら",
-    "loginError": "ログインに失敗しました。メールアドレスとパスワードをご確認ください。",
-    "signupError": "登録に失敗しました。",
-    "signupSuccess": "確認メールを送信しました。メール内のリンクをクリックして登録を完了してください。",
-    "showPassword": "表示",
-    "hidePassword": "隠す",
-    "forgotPassword": "パスワードをお忘れですか？",
-    "resetPasswordTitle": "パスワードの再設定",
-    "resetPasswordDesc": "登録したメールアドレスを入力してください。再設定用のリンクを送信します。",
-    "sendResetLink": "再設定リンクを送信する",
-    "resetLinkSent": "再設定用のメールを送信しました。メール内のリンクからパスワードを再設定してください。",
-    "updatePasswordTitle": "新しいパスワードの設定",
-    "updatePasswordButton": "パスワードを更新する",
-    "updatePasswordSuccess": "パスワードが更新されました。ダッシュボードへ移動します。",
-    "backToLogin": "ログイン画面に戻る",
-    "newPasswordLabel": "新しいパスワード",
-    "rateLimitError": "メール送信の上限に達しました。セキュリティのため、しばらく時間をおいてから再度お試しください。",
-    "generalError": "エラーが発生しました。メールアドレスをご確認の上、もう一度お試しください。"
-  },
-  "dashboard": {
-    "title": "学習ダッシュボード",
-    "adminButton": "管理画面へ",
-    "logoutButton": "ログアウト",
-    "welcome": "ようこそ、",
-    "honorific": " さん",
-    "subscriptionStatus": "現在のご契約状況",
-    "renewalDate": "更新日: ",
-    "manageSubscription": "契約内容の確認・変更",
-    "noSubscription": "プラン未契約です。",
-    "choosePlan": "プランを選択する",
-    "planLight": "ライトプラン（年10本）",
-    "planStandard": "スタンダードプラン（年30本）",
-    "planPremium": "プレミアムプラン（無制限）",
-    "planNone": "未契約",
-    "continueWatching": "続きから見る",
-    "recentlyWatched": "最近視聴",
-    "favorites": "お気に入り",
-    "watch": "▶ 視聴",
-    "courseList": "学習コース一覧",
-    "section": "セクション ",
-    "videosCount": " 本",
-    "progress": "進捗: ",
-    "completed": " 完了",
-    "remainingTickets": "追加視聴枠：残り {count} 本",
-    "buyTickets": "動画視聴枠を 10本購入する "
-  },
-  "section": {
-    "backToDashboard": "← ダッシュボードへ戻る",
-    "title": "セクション {id} の動画一覧",
-    "viewed": "✓ 視聴済み",
-    "watchAgain": "もう一度見る",
-    "watch": "視聴する"
-  },
-  "video": {
-    "requireSubscription": "動画を視聴するにはプランの契約が必要です。",
-    "toPricing": "プラン選択画面へ",
-    "limitReachedTitle": "今年の視聴上限（{limit}本）に達しました",
-    "limitMessage": "新しい動画を視聴するには、来月の更新をお待ちいただくか、プランの変更をご検討ください。",
-    "backToDashboard": "← ダッシュボードに戻る",
-    "playerTitle": "授業動画再生",
-    "currentPlan": "現在のプラン",
-    "yearlyWatchCount": "今年の視聴本数",
-    "unlimited": "無制限",
-    "videosUnit": " 本",
-    "favoriteAdd": "お気に入りに追加",
-    "favoriteRemove": "お気に入り解除",
-    "watchCompleted": "✓ 視聴完了",
-    "useTicket": "追加チケットを1枚使って視聴する",
-    "noTickets": "視聴枠がありません。チケットを購入してください。"
-  },
-  "pricing": {
-    "title": "学習プランを選択",
-    "subtitle": "あなたの学習ペースに合わせたプランをお選びください。",
-    "noticeTitle": "お知らせ",
-    "noticeMessage": "お客様はすでにプランをご契約中です。現在のプランの解約や変更をご希望の場合は、管理者までお問い合わせください。",
-    "planLight": "ライトプラン",
-    "planStandard": "スタンダードプラン",
-    "planPremium": "プレミアムプラン",
-    "priceLight": "¥100,000",
-    "priceStandard": "¥500,000",
-    "pricePremium": "¥1,000,000",
-    "perMonth": "/年",
-    "subscribed": "契約済み",
-    "selectPlan": "プランを選択",
-    "alreadySubscribedError": "すでにプランを契約中のため、追加購入はできません"
-  }
-}
-</file>
-
-<file path="middleware.ts">
-import { createServerClient } from '@supabase/ssr'
-import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
-
-export async function middleware(request: NextRequest) {
-  // 1. レスポンスオブジェクトの初期化
-  let response = NextResponse.next({
-    request: { headers: request.headers },
-  })
-
-  // 2. Supabaseクライアントの初期化 (Server Component/Middleware用)
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll: () => request.cookies.getAll(),
-        setAll: (cookiesToSet) => {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          response = NextResponse.next({ request })
-          cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options))
-        },
-      },
-    }
-  )
-
-  // セッション情報を取得
-  const { data: { session } } = await supabase.auth.getSession()
-  const { pathname } = request.nextUrl
-
-  // ----------------------------------------------------------------
-  // A. 1アカウント1ログイン制限ロジック (ダッシュボードと動画ページが対象)
-  // ----------------------------------------------------------------
-  if (session && (pathname.includes('/dashboard') || pathname.includes('/video'))) {
-    // データベースから最新のセッションIDを取得
-    const { data: sub } = await supabase
-      .from('subscriptions')
-      .select('plan_type, current_session_id')
-      .eq('user_id', session.user.id)
-      .maybeSingle();
-
-    // ライト・スタンダードプランのみ判定
-    if (sub?.plan_type === 'light' || sub?.plan_type === 'standard') {
-      const currentTokenId = session.access_token.slice(-20);
-      
-      // DBのIDと手元のトークンIDが一致しない＝別の端末で新しくログインされた
-      if (sub.current_session_id && sub.current_session_id !== currentTokenId) {
-        // 強制ログアウト処理
-        await supabase.auth.signOut();
-        const lang = pathname.startsWith('/en') ? 'en' : 'ja';
-        const redirectUrl = new URL(`/${lang}/login?message=other_device`, request.url);
-        return NextResponse.redirect(redirectUrl);
-      }
-    }
-  }
-
-  // ----------------------------------------------------------------
-  // B. 言語リダイレクトロジック (既存機能)
-  // ----------------------------------------------------------------
-  const locales = ['ja', 'en']
-  const defaultLocale = 'ja'
-  const pathnameHasLocale = locales.some(
-    (locale) => pathname.startsWith(`/${locale}/`) || pathname === `/${locale}`
-  )
-
-  if (!pathnameHasLocale) {
-    // ロケールが含まれていない場合は、デフォルト言語（/ja）を付与
-    const url = request.nextUrl.clone()
-    url.pathname = `/${defaultLocale}${pathname}`
-    return NextResponse.redirect(url)
-  }
-
-  return response
-}
-
-export const config = {
-  matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
-  ],
 }
 </file>
 
@@ -1509,6 +889,803 @@ export default async function RootLayout({
 }
 </file>
 
+<file path="app/[lang]/section/[id]/page.tsx">
+import { createClient } from '@/utils/supabase/server'
+import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import { getDictionary } from '@/utils/get-dictionary'
+import LanguageSwitcher from '@/app/components/LanguageSwitcher'
+
+export const runtime = 'edge';
+
+export default async function SectionPage({ 
+  params 
+}: { 
+  params: Promise<{ lang: 'ja' | 'en', id: string }> 
+}) {
+  const { lang, id: sectionId } = await params
+  const dict = await getDictionary(lang)
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect(`/${lang}/login`)
+
+  const { data: videos } = await supabase
+    .from('videos').select('*').like('title', `${sectionId}-%`)
+
+  const sortedVideos = videos?.sort((a, b) => {
+    const aNum = parseInt(a.title.match(/-(\d+)/)?.[1] || '0')
+    const bNum = parseInt(b.title.match(/-(\d+)/)?.[1] || '0')
+    return aNum - bNum
+  }) || []
+
+  const { data: history } = await supabase
+    .from('viewing_history').select('vimeo_video_id').eq('user_id', user.id)
+  
+  const viewedIds = new Set(history?.map(h => h.vimeo_video_id) || [])
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-4 md:p-8 relative">
+      <div className="absolute top-6 right-6">
+        <LanguageSwitcher currentLang={lang} />
+      </div>
+
+      <div className="max-w-6xl mx-auto mt-8">
+        <div className="mb-8">
+          <Link href={`/${lang}/dashboard`} className="text-blue-600 hover:underline text-sm mb-4 inline-block">
+            {dict.section.backToDashboard}
+          </Link>
+          <h1 className="text-2xl font-bold text-gray-800">
+            {dict.section.title.replace('{id}', sectionId)}
+          </h1>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {sortedVideos.map((video) => {
+            const isViewed = viewedIds.has(video.vimeo_id)
+            return (
+              <div key={video.id} className="bg-white rounded-lg border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">
+                <div className="aspect-video bg-gray-100 flex items-center justify-center relative">
+                  {video.thumbnail_url ? (
+                    <img src={video.thumbnail_url} alt={video.title} className="object-cover w-full h-full" />
+                  ) : (
+                    <span className="text-gray-400 font-medium">Video</span>
+                  )}
+                  {isViewed && (
+                    <div className="absolute top-2 right-2 bg-green-500 text-white text-xs px-2 py-1 rounded shadow-sm font-bold">
+                      {dict.section.viewed}
+                    </div>
+                  )}
+                </div>
+                <div className="p-4 flex flex-col justify-between">
+                  <h3 className="font-bold text-gray-900 mb-4">{video.title}</h3>
+                  <Link href={`/${lang}/video/${video.vimeo_id}`} className={`block w-full text-center px-4 py-2 font-medium text-sm rounded-md transition-colors ${
+                    isViewed ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white'
+                  }`}>
+                    {isViewed ? dict.section.watchAgain : dict.section.watch}
+                  </Link>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+</file>
+
+<file path="app/api/auth/callback/route.ts">
+import { NextResponse } from 'next/server'
+import { createClient } from '@/utils/supabase/server'
+
+export const runtime = 'edge';
+
+export async function GET(request: Request) {
+  const { searchParams, origin } = new URL(request.url)
+  const code = searchParams.get('code')
+  const next = searchParams.get('next') ?? '/'
+
+  if (code) {
+    const supabase = await createClient()
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+
+    if (!error && data?.session) {
+      const user = data.session.user;
+
+      const { data: subscription } = await supabase
+        .from('subscriptions')
+        .select('plan_type')
+        .eq('user_id', user.id)
+        .maybeSingle();
+        
+      if (subscription?.plan_type === 'light' || subscription?.plan_type === 'standard') {
+        // アクセストークンの末尾など、このセッション固有の値を識別子とする
+        const sessionId = data.session.access_token.slice(-20);
+        
+        await supabase
+          .from('subscriptions')
+          .update({ current_session_id: sessionId })
+          .eq('user_id', user.id);
+          
+        console.log(`【セッション更新】: ユーザー ${user.id} (${subscription.plan_type})`);
+      }
+
+      return NextResponse.redirect(`${origin}${next}`)
+    } else {
+      console.error('【認証エラー発生】:', error?.message)
+    }
+  } else {
+    console.error('【認証エラー発生】: URLに認証コード(code)が含まれていません')
+  }
+
+  // エラー時はトップページへ戻します
+  return NextResponse.redirect(`${origin}/?message=auth-error`)
+}
+</file>
+
+<file path="app/api/auth/login/route.ts">
+// app/api/auth/login/route.ts
+import { NextResponse } from 'next/server'
+import { createClient } from '@/utils/supabase/server'
+
+export const runtime = 'edge';
+
+export async function POST(request: Request) {
+  // 標準的なフォームデータを受け取ります
+  const formData = await request.formData()
+  const email = formData.get('email') as string
+  const password = formData.get('password') as string
+  const currentLang = formData.get('lang') as string || 'ja'
+  
+  let redirectUrl = ''
+
+  try {
+    const supabase = await createClient()
+    const { data , error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
+
+    if (error) {
+      console.error('ログインエラー:', error.message)
+      redirectUrl = `/${currentLang}/login?message=error`
+    } else if (data.session) {
+      // ★ ここから追加：セッションIDをDBに記録
+      const user = data.session.user
+      const { data: sub } = await supabase
+        .from('subscriptions')
+        .select('plan_type')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      // ライト・スタンダードのみ制限
+      if (sub?.plan_type === 'light' || sub?.plan_type === 'standard') {
+        const sessionId = data.session.access_token.slice(-20)
+        const { error: updateError } = await supabase
+          .from('subscriptions')
+          .update({ current_session_id: sessionId })
+          .eq('user_id', user.id)
+      }
+      
+      redirectUrl = `/${currentLang}/dashboard`
+    }
+  } catch (e: any) {
+    console.error('予期せぬシステムエラー:', e.message)
+    redirectUrl = `/ja/login?message=error`
+  }
+
+  // 303 (See Other) を使って、POSTリクエストから安全にリダイレクトさせます
+  return NextResponse.redirect(new URL(redirectUrl, request.url), 303)
+}
+</file>
+
+<file path="app/api/checkout/route.ts">
+import { NextResponse } from 'next/server'
+import { createClient } from '@/utils/supabase/server'
+import Stripe from 'stripe'
+
+export const runtime = 'edge';
+
+export async function POST(request: Request) {
+  const formData = await request.formData()
+  const currentLang = formData.get('lang') as string || 'ja'
+  const priceId = formData.get('priceId') as string
+  
+  // URLから動的にオリジンを取得
+  const origin = new URL(request.url).origin
+
+  const isAddOn = priceId === process.env.STRIPE_PRICE_ID_ADDON;
+
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      return NextResponse.redirect(new URL(`/${currentLang}/login`, request.url), 303)
+    }
+
+    const { data: checkSub } = await supabase
+      .from('subscriptions').select('id').eq('user_id', user.id).eq('status', 'active').limit(1)
+
+    if (!isAddOn && checkSub && checkSub.length > 0) {
+      const errorMsg = currentLang === 'ja' ? 'すでにプランを契約中のため、追加購入はできません' : 'You are already subscribed to a plan. Additional purchases are not allowed.'
+      return NextResponse.redirect(new URL(`/${currentLang}/dashboard?message=${encodeURIComponent(errorMsg)}`, request.url), 303)
+    }
+
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
+      apiVersion: '2026-02-25.clover',
+    })
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [{ price: priceId, quantity: 1 }],
+      // 追加枠なら 'payment' (単発払い)、プランなら 'subscription' (継続)
+      mode: isAddOn ? 'payment' : 'subscription', 
+      success_url: `${origin}/${currentLang}/dashboard?success=true`,
+      cancel_url: `${origin}/${currentLang}/pricing?canceled=true`,
+      customer_email: user.email,
+      locale: currentLang === 'ja' ? 'ja' : 'en',
+      metadata: { 
+        userId: user.id,
+        purchaseType: isAddOn ? 'addon' : 'subscription' // Webhookで判別するために必須
+      },
+    })
+
+    if (session.url) {
+      return NextResponse.redirect(session.url, 303)
+    }
+    
+    return NextResponse.redirect(new URL(`/${currentLang}/pricing`, request.url), 303)
+    
+  } catch (error: any) {
+    console.error('Checkout Error:', error)
+    return NextResponse.redirect(new URL(`/${currentLang}/pricing?error=true`, request.url), 303)
+  }
+}
+</file>
+
+<file path="app/api/record-view/route.ts">
+import { NextResponse } from 'next/server'
+import { createClient } from '@/utils/supabase/server'
+
+export const runtime = 'edge';
+
+export async function POST(req: Request) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  try {
+    const { videoId } = await req.json()
+
+    const { data: subscription } = await supabase
+      .from('subscriptions')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('status', 'active')
+      .single()
+
+    if (!subscription) return NextResponse.json({ error: 'No active plan' }, { status: 403 })
+
+    // ★ 修正：今月ではなく「今期の契約期間（1年間）」ですでに見たかチェック
+    const { data: alreadyViewed } = await supabase
+      .from('viewing_history')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('vimeo_video_id', videoId)
+      .gte('viewed_at', subscription.current_period_start) // 契約開始日（1年前）から
+      .lte('viewed_at', subscription.current_period_end)   // 契約終了日まで
+      .maybeSingle()
+
+    // すでにこの期間内に視聴済みなら、重複して記録しない
+    if (alreadyViewed)
+      return NextResponse.json({ success: true })
+
+    // 今期の総視聴本数をカウント（年間）
+    const { count } = await supabase
+      .from('viewing_history').select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .gte('viewed_at', subscription.current_period_start)
+      .lte('viewed_at', subscription.current_period_end)
+
+    const currentCount = count || 0
+    // 年契約に合わせた制限（例：ライトなら年120本など。必要に応じて数値を調整してください）
+    const planLimits: Record<string, number> = { light: 10, standard: 30, premium: 1000 }
+    const limit = planLimits[subscription.plan_type] || 0
+
+    if (currentCount >= limit) {
+      // チケット（買い足し枠）のチェックロジックはそのまま維持
+      const { data: credit } = await supabase
+        .from('video_credits')
+        .select('*')
+        .eq('user_id', user.id)
+        .gt('remaining', 0)
+        .gt('expires_at', new Date().toISOString())
+        .order('expires_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (credit) {
+        await supabase
+          .from('video_credits')
+          .update({ remaining: credit.remaining - 1 })
+          .eq('id', credit.id);
+      } else {
+        return NextResponse.json({ error: 'Yearly limit reached' }, { status: 403 })
+      }
+    }
+
+    // 新しく視聴履歴を挿入
+    await supabase.from('viewing_history').insert({
+      user_id: user.id,
+      vimeo_video_id: videoId
+    });
+
+    return NextResponse.json({ success: true })
+
+    } catch (error) {
+    // ★ ここで try を閉じ、catch ブロックを配置します
+    console.error('Record View Error:', error)
+    return NextResponse.json({ error: 'Server Error' }, { status: 500 })
+  }
+}
+</file>
+
+<file path="app/components/PasswordInput.tsx">
+'use client'
+
+import { useState } from 'react'
+
+export default function PasswordInput({ 
+  name, 
+  placeholder, 
+  required = false, 
+  minLength,
+  showText,
+  hideText
+}: { 
+  name: string, 
+  placeholder: string, 
+  required?: boolean, 
+  minLength?: number,
+  showText: string,
+  hideText: string
+}) {
+  const [show, setShow] = useState(false)
+
+  return (
+    <div className="relative w-full">
+      <input
+        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-16 font-sans text-gray-900 bg-white"
+        name={name}
+        type={show ? 'text' : 'password'}
+        placeholder={placeholder}
+        required={required}
+        minLength={minLength}
+      />
+      <button
+        type="button"
+        onClick={() => setShow(!show)}
+        className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors"
+      >
+        {show ? hideText : showText}
+      </button>
+    </div>
+  )
+}
+</file>
+
+<file path="dictionaries/en.json">
+{
+  "metadata": {
+    "title": "Nihongo Learning | Japanese Learning Platform",
+    "description": "Unlimited access to over 100 high-quality video lessons. Master Japanese at your own pace."
+  },
+  "home": {
+    "title": "Nihongo Learning",
+    "login": "Log in",
+    "startFree": "Start for Free",
+    "heroTitle1": "Master Japanese",
+    "heroTitle2": "at your own pace.",
+    "heroDescription": "Unlimited access to over 100 high-quality video lessons. Master everything from daily conversation to business Japanese with our structured curriculum.",
+    "startNow": "Start Learning Now",
+    "viewPricing": "View Pricing Plans",
+    "reasonsTitle": "3 Reasons to Choose Us",
+    "reasonsDesc": "We provide the optimal environment for learning Japanese efficiently.",
+    "feature1Title": "High-Quality Video Lessons",
+    "feature1Desc": "Easy-to-understand explanations by professional Japanese teachers. Watch them anytime, anywhere, as many times as you like.",
+    "feature2Title": "Track Your Progress",
+    "feature2Desc": "Visualize your learning achievement for each section with percentages. Keep your motivation high as you learn.",
+    "feature3Title": "Flexible Pricing Plans",
+    "feature3Desc": "We offer 3 plans to suit your learning pace, from a Light plan to an unlimited Premium plan.",
+    "pricingTitle": "Simple Pricing",
+    "pricingDesc": "Registration is free. Create an account first, then choose the plan that suits you.",
+    "planLight": "Light",
+    "planStandard": "Standard",
+    "planPremium": "Premium",
+    "perMonth": " / year",
+    "mostPopular": "Most Popular",
+    "lightFeature1": "Watch up to 10 videos per year",
+    "standardFeature1": "Watch up to 30 videos per year",
+    "premiumFeature1": "Unlimited video access",
+    "featureProgress": "Progress tracking",
+    "featureAllAccess": "Access to all sections",
+    "ctaTitle": "Let's open the door to a new language.",
+    "ctaDesc": "Account creation takes only 1 minute.",
+    "createFreeAccount": "Create a Free Account",
+    "footerRights": "Nihongo Learning. All rights reserved."
+  },
+  "auth": {
+    "loginTitle": "Log In",
+    "signupTitle": "Create an Account",
+    "emailLabel": "Email Address",
+    "emailPlaceholder": "you@example.com",
+    "passwordLabel": "Password",
+    "passwordPlaceholder": "••••••••",
+    "loginButton": "Log In",
+    "signupButton": "Sign Up",
+    "toSignupText": "Don't have an account?",
+    "toSignupLink": "Sign up here",
+    "toLoginText": "Already have an account?",
+    "toLoginLink": "Log in here",
+    "loginError": "Failed to log in. Please check your email and password.",
+    "signupError": "Failed to sign up.",
+    "signupSuccess": "A confirmation email has been sent. Please click the link in the email to complete registration.",
+    "showPassword": "Show",
+    "hidePassword": "Hide",
+    "forgotPassword": "Forgot your password?",
+    "resetPasswordTitle": "Reset Password",
+    "resetPasswordDesc": "Enter your registered email address. We will send you a link to reset your password.",
+    "sendResetLink": "Send Reset Link",
+    "resetLinkSent": "A password reset email has been sent. Please click the link in the email to reset your password.",
+    "updatePasswordTitle": "Set New Password",
+    "updatePasswordButton": "Update Password",
+    "updatePasswordSuccess": "Your password has been updated. Redirecting to the dashboard...",
+    "backToLogin": "Back to Login",
+    "newPasswordLabel": "New Password",
+    "rateLimitError": "Email sending limit reached. For security reasons, please wait a while before trying again.",
+    "generalError": "An error occurred. Please check your email address and try again."
+  },
+  "dashboard": {
+    "title": "Learning Dashboard",
+    "adminButton": "Admin Dashboard",
+    "logoutButton": "Log Out",
+    "welcome": "Welcome, ",
+    "honorific": "",
+    "subscriptionStatus": "Current Subscription Status",
+    "renewalDate": "Renewal Date: ",
+    "manageSubscription": "Manage Subscription",
+    "noSubscription": "No active subscription.",
+    "choosePlan": "Choose a Plan",
+    "planLight": "Light Plan (10 videos/mo)",
+    "planStandard": "Standard Plan (30 videos/mo)",
+    "planPremium": "Premium Plan (Unlimited)",
+    "planNone": "Unsubscribed",
+    "continueWatching": "Continue Watching",
+    "recentlyWatched": "Recently Watched",
+    "favorites": "Favorites",
+    "watch": "▶ Watch",
+    "courseList": "Course List",
+    "section": "Section ",
+    "videosCount": " videos",
+    "progress": "Progress: ",
+    "completed": " Completed",
+    "remainingTickets": "Extra Tickets: {count} remaining",
+    "buyTickets": "Buy 10 Extra Video Tickets ($15.00)"
+  },
+  "section": {
+    "backToDashboard": "← Back to Dashboard",
+    "title": "Videos for Section {id}",
+    "viewed": "✓ Viewed",
+    "watchAgain": "Watch Again",
+    "watch": "Watch"
+  },
+  "video": {
+    "requireSubscription": "A subscription plan is required to watch videos.",
+    "toPricing": "Go to Pricing",
+    "limitReachedTitle": "Yearly viewing limit reached ({limit} videos)",
+    "limitMessage": "To watch more videos, please wait for next year's renewal or consider upgrading your plan or purchases additional Tickets.",
+    "backToDashboard": "← Back to Dashboard",
+    "playerTitle": "Video Player",
+    "currentPlan": "Current Plan",
+    "yearlyWatchCount": "Yearly Videos Watched",
+    "unlimited": "Unlimited",
+    "videosUnit": " videos",
+    "favoriteAdd": "Add to Favorites",
+    "favoriteRemove": "Remove Favorite",
+    "watchCompleted": "✓ Completed"
+  },
+  "pricing": {
+    "title": "Choose a Learning Plan",
+    "subtitle": "Select the plan that best fits your learning pace.",
+    "noticeTitle": "Notice",
+    "noticeMessage": "You are already subscribed to a plan. If you wish to cancel or change your current plan, please contact the administrator.",
+    "planLight": "Light Plan",
+    "planStandard": "Standard Plan",
+    "planPremium": "Premium Plan",
+    "priceLight": "$10.00",
+    "priceStandard": "$30.00",
+    "pricePremium": "$50.00",
+    "perMonth": "/year",
+    "subscribed": "Subscribed",
+    "selectPlan": "Select Plan",
+    "alreadySubscribedError": "You are already subscribed to a plan. Additional purchases are not allowed."
+  }
+}
+</file>
+
+<file path="dictionaries/ja.json">
+{
+  "metadata": {
+    "title": "Nihongo Learning | 外国人のための日本語学習",
+    "description": "100本以上の高品質な授業動画が見放題。あなたのペースで確実な日本語力を身につけましょう。"
+  },
+  "home": {
+    "title": "Nihongo Learning",
+    "login": "ログイン",
+    "startFree": "無料ではじめる",
+    "heroTitle1": "あなたのペースで、",
+    "heroTitle2": "確実な日本語力を。",
+    "heroDescription": "100本以上の高品質な授業動画が見放題。体系化されたカリキュラムで、日常会話からビジネス日本語まで、最短ルートでマスターしましょう。",
+    "startNow": "今すぐ学習をスタート",
+    "viewPricing": "料金プランを見る",
+    "reasonsTitle": "選ばれる3つの理由",
+    "reasonsDesc": "効率的に日本語を習得するための、最適な環境が整っています。",
+    "feature1Title": "圧倒的な質の授業動画",
+    "feature1Desc": "プロの日本語教師による、わかりやすい解説動画。いつでもどこでも、何度でも見返すことができます。",
+    "feature2Title": "進捗がひと目でわかる",
+    "feature2Desc": "セクションごとの学習達成度をパーセンテージで可視化。モチベーションを維持しながら学習を進められます。",
+    "feature3Title": "選べる柔軟な料金プラン",
+    "feature3Desc": "あなたの学習ペースに合わせて、ライトから無制限のプレミアムまで、3つのプランをご用意しています。",
+    "pricingTitle": "シンプルな料金体系",
+    "pricingDesc": "登録は無料です。まずはアカウントを作成し、あなたに合ったプランをお選びください。",
+    "planLight": "ライト",
+    "planStandard": "スタンダード",
+    "planPremium": "プレミアム",
+    "perMonth": " / 年",
+    "mostPopular": "一番人気",
+    "lightFeature1": "年間 10本まで視聴可能",
+    "standardFeature1": "年間 30本まで視聴可能",
+    "premiumFeature1": "動画視聴 無制限",
+    "featureProgress": "進捗管理機能",
+    "featureAllAccess": "全セクションへのアクセス",
+    "ctaTitle": "さあ、新しい言語の扉を開きましょう。",
+    "ctaDesc": "アカウント作成はわずか1分で完了します。",
+    "createFreeAccount": "無料でアカウントを作成する",
+    "footerRights": "Nihongo Learning. All rights reserved."
+  },
+  "auth": {
+    "loginTitle": "ログイン",
+    "signupTitle": "新規アカウント登録",
+    "emailLabel": "メールアドレス",
+    "emailPlaceholder": "you@example.com",
+    "passwordLabel": "パスワード",
+    "passwordPlaceholder": "••••••••",
+    "loginButton": "ログイン",
+    "signupButton": "登録する",
+    "toSignupText": "アカウントをお持ちでないですか？",
+    "toSignupLink": "新規登録はこちら",
+    "toLoginText": "すでにアカウントをお持ちですか？",
+    "toLoginLink": "ログインはこちら",
+    "loginError": "ログインに失敗しました。メールアドレスとパスワードをご確認ください。",
+    "signupError": "登録に失敗しました。",
+    "signupSuccess": "確認メールを送信しました。メール内のリンクをクリックして登録を完了してください。",
+    "showPassword": "表示",
+    "hidePassword": "隠す",
+    "forgotPassword": "パスワードをお忘れですか？",
+    "resetPasswordTitle": "パスワードの再設定",
+    "resetPasswordDesc": "登録したメールアドレスを入力してください。再設定用のリンクを送信します。",
+    "sendResetLink": "再設定リンクを送信する",
+    "resetLinkSent": "再設定用のメールを送信しました。メール内のリンクからパスワードを再設定してください。",
+    "updatePasswordTitle": "新しいパスワードの設定",
+    "updatePasswordButton": "パスワードを更新する",
+    "updatePasswordSuccess": "パスワードが更新されました。ダッシュボードへ移動します。",
+    "backToLogin": "ログイン画面に戻る",
+    "newPasswordLabel": "新しいパスワード",
+    "rateLimitError": "メール送信の上限に達しました。セキュリティのため、しばらく時間をおいてから再度お試しください。",
+    "generalError": "エラーが発生しました。メールアドレスをご確認の上、もう一度お試しください。"
+  },
+  "dashboard": {
+    "title": "学習ダッシュボード",
+    "adminButton": "管理画面へ",
+    "logoutButton": "ログアウト",
+    "welcome": "ようこそ、",
+    "honorific": " さん",
+    "subscriptionStatus": "現在のご契約状況",
+    "renewalDate": "更新日: ",
+    "manageSubscription": "契約内容の確認・変更",
+    "noSubscription": "プラン未契約です。",
+    "choosePlan": "プランを選択する",
+    "planLight": "ライトプラン（年10本）",
+    "planStandard": "スタンダードプラン（年30本）",
+    "planPremium": "プレミアムプラン（無制限）",
+    "planNone": "未契約",
+    "continueWatching": "続きから見る",
+    "recentlyWatched": "最近視聴",
+    "favorites": "お気に入り",
+    "watch": "▶ 視聴",
+    "courseList": "学習コース一覧",
+    "section": "セクション ",
+    "videosCount": " 本",
+    "progress": "進捗: ",
+    "completed": " 完了",
+    "remainingTickets": "追加視聴枠：残り {count} 本",
+    "buyTickets": "動画視聴枠を 10本購入する "
+  },
+  "section": {
+    "backToDashboard": "← ダッシュボードへ戻る",
+    "title": "セクション {id} の動画一覧",
+    "viewed": "✓ 視聴済み",
+    "watchAgain": "もう一度見る",
+    "watch": "視聴する"
+  },
+  "video": {
+    "requireSubscription": "動画を視聴するにはプランの契約が必要です。",
+    "toPricing": "プラン選択画面へ",
+    "limitReachedTitle": "今年の視聴上限（{limit}本）に達しました",
+    "limitMessage": "新しい動画を視聴するには、来月の更新をお待ちいただくか、プランの変更をご検討ください。",
+    "backToDashboard": "← ダッシュボードに戻る",
+    "playerTitle": "授業動画再生",
+    "currentPlan": "現在のプラン",
+    "yearlyWatchCount": "今年の視聴本数",
+    "unlimited": "無制限",
+    "videosUnit": " 本",
+    "favoriteAdd": "お気に入りに追加",
+    "favoriteRemove": "お気に入り解除",
+    "watchCompleted": "✓ 視聴完了",
+    "useTicket": "追加チケットを1枚使って視聴する",
+    "noTickets": "視聴枠がありません。チケットを購入してください。"
+  },
+  "pricing": {
+    "title": "学習プランを選択",
+    "subtitle": "あなたの学習ペースに合わせたプランをお選びください。",
+    "noticeTitle": "お知らせ",
+    "noticeMessage": "お客様はすでにプランをご契約中です。現在のプランの解約や変更をご希望の場合は、管理者までお問い合わせください。",
+    "planLight": "ライトプラン",
+    "planStandard": "スタンダードプラン",
+    "planPremium": "プレミアムプラン",
+    "priceLight": "¥100,000",
+    "priceStandard": "¥500,000",
+    "pricePremium": "¥1,000,000",
+    "perMonth": "/年",
+    "subscribed": "契約済み",
+    "selectPlan": "プランを選択",
+    "alreadySubscribedError": "すでにプランを契約中のため、追加購入はできません"
+  }
+}
+</file>
+
+<file path="middleware.ts">
+import { createServerClient } from '@supabase/ssr'
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
+
+export async function middleware(request: NextRequest) {
+  // 1. レスポンスオブジェクトの初期化
+  let response = NextResponse.next({
+    request: { headers: request.headers },
+  })
+
+  // 2. Supabaseクライアントの初期化 (Server Component/Middleware用)
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => request.cookies.getAll(),
+        setAll: (cookiesToSet) => {
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+          response = NextResponse.next({ request })
+          cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options))
+        },
+      },
+    }
+  )
+
+  // セッション情報を取得
+  const { data: { user } } = await supabase.auth.getUser() // サーバー側で認証を検証
+  const { data: { session } } = await supabase.auth.getSession() // トークン取得用
+  const { pathname } = request.nextUrl
+
+  // ----------------------------------------------------------------
+  // A. 1アカウント1ログイン制限ロジック (ダッシュボードと動画ページが対象)
+  // ----------------------------------------------------------------
+  if (session && (pathname.includes('/dashboard') || pathname.includes('/video'))) {
+    // データベースから最新のセッションIDを取得
+    const { data: sub } = await supabase
+      .from('subscriptions')
+      .select('plan_type, current_session_id')
+      .eq('user_id', session.user.id)
+      .maybeSingle();
+
+    // ライト・スタンダードプランのみ判定
+    if (sub?.plan_type === 'light' || sub?.plan_type === 'standard') {
+      const currentTokenId = session.access_token.slice(-20);
+      
+      // DBのIDと手元のトークンIDが一致しない＝別の端末で新しくログインされた
+      if (sub.current_session_id && sub.current_session_id !== currentTokenId) {
+        // 強制ログアウト処理
+        await supabase.auth.signOut();
+        const lang = pathname.startsWith('/en') ? 'en' : 'ja';
+        const redirectUrl = new URL(`/${lang}/login?message=other_device`, request.url);
+        return NextResponse.redirect(redirectUrl);
+      }
+    }
+  }
+
+  // ----------------------------------------------------------------
+  // B. 言語リダイレクトロジック (既存機能)
+  // ----------------------------------------------------------------
+  const locales = ['ja', 'en']
+  const defaultLocale = 'ja'
+  const pathnameHasLocale = locales.some(
+    (locale) => pathname.startsWith(`/${locale}/`) || pathname === `/${locale}`
+  )
+
+  if (!pathnameHasLocale) {
+    // ロケールが含まれていない場合は、デフォルト言語（/ja）を付与
+    const url = request.nextUrl.clone()
+    url.pathname = `/${defaultLocale}${pathname}`
+    return NextResponse.redirect(url)
+  }
+
+  return response
+}
+
+export const config = {
+  matcher: [
+    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+  ],
+}
+</file>
+
+<file path=".gitignore">
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+stripe.exe
+</file>
+
 <file path="app/[lang]/page.tsx">
 import Link from 'next/link'
 import { getDictionary } from '@/utils/get-dictionary'
@@ -1705,92 +1882,6 @@ export default async function HomePage({ params }: { params: Promise<{ lang: 'ja
 }
 </file>
 
-<file path="app/[lang]/section/[id]/page.tsx">
-import { createClient } from '@/utils/supabase/server'
-import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import { getDictionary } from '@/utils/get-dictionary'
-import LanguageSwitcher from '@/app/components/LanguageSwitcher'
-
-export const runtime = 'edge';
-
-export default async function SectionPage({ 
-  params 
-}: { 
-  params: Promise<{ lang: 'ja' | 'en', id: string }> 
-}) {
-  const { lang, id: sectionId } = await params
-  const dict = await getDictionary(lang)
-
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect(`/${lang}/login`)
-
-  const { data: videos } = await supabase
-    .from('videos').select('*').like('title', `${sectionId}-%`)
-
-  const sortedVideos = videos?.sort((a, b) => {
-    const aNum = parseInt(a.title.match(/-(\d+)/)?.[1] || '0')
-    const bNum = parseInt(b.title.match(/-(\d+)/)?.[1] || '0')
-    return aNum - bNum
-  }) || []
-
-  const { data: history } = await supabase
-    .from('viewing_history').select('vimeo_video_id').eq('user_id', user.id)
-  
-  const viewedIds = new Set(history?.map(h => h.vimeo_video_id) || [])
-
-  return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-8 relative">
-      <div className="absolute top-6 right-6">
-        <LanguageSwitcher currentLang={lang} />
-      </div>
-
-      <div className="max-w-6xl mx-auto mt-8">
-        <div className="mb-8">
-          <Link href={`/${lang}/dashboard`} className="text-blue-600 hover:underline text-sm mb-4 inline-block">
-            {dict.section.backToDashboard}
-          </Link>
-          <h1 className="text-2xl font-bold text-gray-800">
-            {dict.section.title.replace('{id}', sectionId)}
-          </h1>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {sortedVideos.map((video) => {
-            const isViewed = viewedIds.has(video.vimeo_id)
-            return (
-              <div key={video.id} className="bg-white rounded-lg border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">
-                <div className="aspect-video bg-gray-100 flex items-center justify-center relative">
-                  {video.thumbnail_url ? (
-                    <img src={video.thumbnail_url} alt={video.title} className="object-cover w-full h-full" />
-                  ) : (
-                    <span className="text-gray-400 font-medium">Video</span>
-                  )}
-                  {isViewed && (
-                    <div className="absolute top-2 right-2 bg-green-500 text-white text-xs px-2 py-1 rounded shadow-sm font-bold">
-                      {dict.section.viewed}
-                    </div>
-                  )}
-                </div>
-                <div className="p-4 flex flex-col justify-between">
-                  <h3 className="font-bold text-gray-900 mb-4">{video.title}</h3>
-                  <Link href={`/${lang}/video/${video.vimeo_id}`} className={`block w-full text-center px-4 py-2 font-medium text-sm rounded-md transition-colors ${
-                    isViewed ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white'
-                  }`}>
-                    {isViewed ? dict.section.watchAgain : dict.section.watch}
-                  </Link>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-    </div>
-  )
-}
-</file>
-
 <file path="app/[lang]/video/[id]/page.tsx">
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
@@ -1958,96 +2049,6 @@ export default async function VideoPage({
     </div>
   )
 }
-</file>
-
-<file path="app/components/PasswordInput.tsx">
-'use client'
-
-import { useState } from 'react'
-
-export default function PasswordInput({ 
-  name, 
-  placeholder, 
-  required = false, 
-  minLength,
-  showText,
-  hideText
-}: { 
-  name: string, 
-  placeholder: string, 
-  required?: boolean, 
-  minLength?: number,
-  showText: string,
-  hideText: string
-}) {
-  const [show, setShow] = useState(false)
-
-  return (
-    <div className="relative w-full">
-      <input
-        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-16 font-sans text-gray-900 bg-white"
-        name={name}
-        type={show ? 'text' : 'password'}
-        placeholder={placeholder}
-        required={required}
-        minLength={minLength}
-      />
-      <button
-        type="button"
-        onClick={() => setShow(!show)}
-        className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors"
-      >
-        {show ? hideText : showText}
-      </button>
-    </div>
-  )
-}
-</file>
-
-<file path=".gitignore">
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# dependencies
-/node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
-
-# testing
-/coverage
-
-# next.js
-/.next/
-/out/
-
-# production
-/build
-
-# misc
-.DS_Store
-*.pem
-
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-
-# env files (can opt-in for committing if needed)
-.env*
-
-# vercel
-.vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
-
-stripe.exe
 </file>
 
 <file path="eslint.config.mjs">
@@ -2420,48 +2421,42 @@ export async function POST(req: Request) {
 }
 </file>
 
-<file path="tsconfig.json">
+<file path="package.json">
 {
-  "compilerOptions": {
-    "target": "ES2017",
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
-    ],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "noEmit": true,
-    "esModuleInterop": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "preserve",
-    "incremental": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
-    "paths": {
-      "@/*": [
-        "./*"
-      ]
-    }
+  "name": "video",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
   },
-  "include": [
-    "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
-    ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts",
-    "**/*.mts"
-  ],
-  "exclude": [
-    "node_modules"
-  ]
+  "dependencies": {
+    "@stripe/stripe-js": "^8.9.0",
+    "@supabase/ssr": "^0.9.0",
+    "@supabase/supabase-js": "^2.98.0",
+    "@vimeo/player": "^2.30.3",
+    "next": "15.5.13",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "stripe": "^20.4.1"
+  },
+  "devDependencies": {
+    "@cloudflare/next-on-pages": "^1.13.16",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/vimeo__player": "^2.18.3",
+    "eslint": "^9",
+    "eslint-config-next": "15.5.13",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  },
+  "overrides": {
+    "next": "$next"
+  }
 }
 </file>
 
@@ -2722,45 +2717,6 @@ export default async function DashboardPage({ params }: { params: Promise<{ lang
 }
 </file>
 
-<file path="package.json">
-{
-  "name": "video",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
-  },
-  "dependencies": {
-    "@stripe/stripe-js": "^8.9.0",
-    "@supabase/ssr": "^0.9.0",
-    "@supabase/supabase-js": "^2.98.0",
-    "@vimeo/player": "^2.30.3",
-    "next": "15.5.13",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "stripe": "^20.4.1"
-  },
-  "devDependencies": {
-    "@cloudflare/next-on-pages": "^1.13.16",
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "@types/vimeo__player": "^2.18.3",
-    "eslint": "^9",
-    "eslint-config-next": "15.5.13",
-    "tailwindcss": "^4",
-    "typescript": "^5"
-  },
-  "overrides": {
-    "next": "$next"
-  }
-}
-</file>
-
 <file path="app/[lang]/login/page.tsx">
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
@@ -2994,6 +2950,51 @@ export default async function UpdatePasswordPage({
       </form>
     </div>
   )
+}
+</file>
+
+<file path="tsconfig.json">
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": [
+        "./*"
+      ]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts",
+    "**/*.mts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }
 </file>
 
