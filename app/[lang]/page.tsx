@@ -41,11 +41,11 @@ export default async function HomePage({ params }: { params: Promise<{ lang: 'ja
 
       <main>
         {/* ヒーローセクション（ファーストビュー） */}
-        <section className="relative pt-24 pb-32 overflow-hidden bg-gradient-to-b from-blue-50 to-white">
+        <section className="relative pt-24 pb-32 overflow-hidden bg-linear-to-b from-blue-50 to-white">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
             <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight text-gray-900 mb-6 leading-tight">
               {dict.home.heroTitle1}<br className="hidden md:block" />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-cyan-500">
+              <span className="text-transparent bg-clip-text bg-linear-to-r from-blue-600 to-cyan-500">
                 {dict.home.heroTitle2}
               </span>
             </h1>
@@ -69,7 +69,7 @@ export default async function HomePage({ params }: { params: Promise<{ lang: 'ja
           </div>
           
           {/* 背景の装飾 */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-200/30 rounded-full blur-3xl -z-10 pointer-events-none"></div>
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-200 h-200 bg-blue-200/30 rounded-full blur-3xl -z-10 pointer-events-none"></div>
         </section>
 
         {/* 特徴・メリットセクション */}
@@ -123,7 +123,7 @@ export default async function HomePage({ params }: { params: Promise<{ lang: 'ja
               {/* プラン1 */}
               <div className="bg-white rounded-2xl p-8 border border-gray-200 shadow-sm text-center">
                 <h3 className="text-lg font-medium text-gray-500 mb-2">{dict.home.planLight}</h3>
-                <p className="text-4xl font-extrabold text-gray-900 mb-6">¥1,000<span className="text-base font-normal text-gray-500">{dict.home.perMonth}</span></p>
+                <p className="text-4xl font-extrabold text-gray-900 mb-6">¥100,000<span className="text-base font-normal text-gray-500">{dict.home.perMonth}</span></p>
                 <ul className="text-left space-y-3 mb-8 text-gray-600">
                   <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> {dict.home.lightFeature1}</li>
                   <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> {dict.home.featureProgress}</li>
@@ -134,7 +134,7 @@ export default async function HomePage({ params }: { params: Promise<{ lang: 'ja
               <div className="bg-white rounded-2xl p-8 border-2 border-blue-500 shadow-xl text-center relative transform md:-translate-y-4">
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-blue-500 text-white px-4 py-1 rounded-full text-sm font-bold tracking-wide">{dict.home.mostPopular}</div>
                 <h3 className="text-lg font-medium text-blue-600 mb-2">{dict.home.planStandard}</h3>
-                <p className="text-4xl font-extrabold text-gray-900 mb-6">¥3,000<span className="text-base font-normal text-gray-500">{dict.home.perMonth}</span></p>
+                <p className="text-4xl font-extrabold text-gray-900 mb-6">¥500,000<span className="text-base font-normal text-gray-500">{dict.home.perMonth}</span></p>
                 <ul className="text-left space-y-3 mb-8 text-gray-600">
                   <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> {dict.home.standardFeature1}</li>
                   <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> {dict.home.featureProgress}</li>
@@ -145,7 +145,7 @@ export default async function HomePage({ params }: { params: Promise<{ lang: 'ja
               {/* プラン3 */}
               <div className="bg-gray-900 rounded-2xl p-8 border border-gray-800 shadow-sm text-center text-white">
                 <h3 className="text-lg font-medium text-gray-400 mb-2">{dict.home.planPremium}</h3>
-                <p className="text-4xl font-extrabold text-white mb-6">¥5,000<span className="text-base font-normal text-gray-400">{dict.home.perMonth}</span></p>
+                <p className="text-4xl font-extrabold text-white mb-6">¥1,000,000<span className="text-base font-normal text-gray-400">{dict.home.perMonth}</span></p>
                 <ul className="text-left space-y-3 mb-8 text-gray-300">
                   <li className="flex items-center"><span className="text-blue-400 mr-2">✓</span> {dict.home.premiumFeature1}</li>
                   <li className="flex items-center"><span className="text-blue-400 mr-2">✓</span> {dict.home.featureProgress}</li>

@@ -63,6 +63,7 @@ app/api/auth/reset-password/route.ts
 app/api/auth/signout/route.ts
 app/api/auth/signup/route.ts
 app/api/auth/update-password/route.ts
+app/api/checkout/route.ts
 app/api/favorites/route.ts
 app/api/portal/route.ts
 app/api/record-view/route.ts
@@ -318,14 +319,32 @@ export async function GET(request: Request) {
 
   if (code) {
     const supabase = await createClient()
-    const { error } = await supabase.auth.exchangeCodeForSession(code)
-    
-    if (!error) {
-      // 認証に成功したら、指定されたパスワード更新画面へリダイレクト
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+
+    if (!error && data?.session) {
+      const user = data.session.user;
+
+      const { data: subscription } = await supabase
+        .from('subscriptions')
+        .select('plan_type')
+        .eq('user_id', user.id)
+        .maybeSingle();
+        
+      if (subscription?.plan_type === 'light' || subscription?.plan_type === 'standard') {
+        // アクセストークンの末尾など、このセッション固有の値を識別子とする
+        const sessionId = data.session.access_token.slice(-20);
+        
+        await supabase
+          .from('subscriptions')
+          .update({ current_session_id: sessionId })
+          .eq('user_id', user.id);
+          
+        console.log(`【セッション更新】: ユーザー ${user.id} (${subscription.plan_type})`);
+      }
+
       return NextResponse.redirect(`${origin}${next}`)
     } else {
-      // ★エラーの真の原因をPowerShellに表示します
-      console.error('【認証エラー発生】:', error.message)
+      console.error('【認証エラー発生】:', error?.message)
     }
   } else {
     console.error('【認証エラー発生】: URLに認証コード(code)が含まれていません')
@@ -354,7 +373,7 @@ export async function POST(request: Request) {
 
   try {
     const supabase = await createClient()
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data , error } = await supabase.auth.signInWithPassword({
       email,
       password,
     })
@@ -362,7 +381,24 @@ export async function POST(request: Request) {
     if (error) {
       console.error('ログインエラー:', error.message)
       redirectUrl = `/${currentLang}/login?message=error`
-    } else {
+    } else if (data.session) {
+      // ★ ここから追加：セッションIDをDBに記録
+      const user = data.session.user
+      const { data: sub } = await supabase
+        .from('subscriptions')
+        .select('plan_type')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      // ライト・スタンダードのみ制限
+      if (sub?.plan_type === 'light' || sub?.plan_type === 'standard') {
+        const sessionId = data.session.access_token.slice(-20)
+        await supabase
+          .from('subscriptions')
+          .update({ current_session_id: sessionId })
+          .eq('user_id', user.id)
+      }
+      
       redirectUrl = `/${currentLang}/dashboard`
     }
   } catch (e: any) {
@@ -493,6 +529,71 @@ export async function POST(request: Request) {
 }
 </file>
 
+<file path="app/api/checkout/route.ts">
+import { NextResponse } from 'next/server'
+import { createClient } from '@/utils/supabase/server'
+import Stripe from 'stripe'
+
+export const runtime = 'edge';
+
+export async function POST(request: Request) {
+  const formData = await request.formData()
+  const currentLang = formData.get('lang') as string || 'ja'
+  const priceId = formData.get('priceId') as string
+  
+  // URLから動的にオリジンを取得
+  const origin = new URL(request.url).origin
+
+  const isAddOn = priceId === process.env.STRIPE_PRICE_ID_ADDON;
+
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      return NextResponse.redirect(new URL(`/${currentLang}/login`, request.url), 303)
+    }
+
+    const { data: checkSub } = await supabase
+      .from('subscriptions').select('id').eq('user_id', user.id).eq('status', 'active').limit(1)
+
+    if (!isAddOn && checkSub && checkSub.length > 0) {
+      const errorMsg = currentLang === 'ja' ? 'すでにプランを契約中のため、追加購入はできません' : 'You are already subscribed to a plan. Additional purchases are not allowed.'
+      return NextResponse.redirect(new URL(`/${currentLang}/dashboard?message=${encodeURIComponent(errorMsg)}`, request.url), 303)
+    }
+
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
+      apiVersion: '2026-02-25.clover',
+    })
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [{ price: priceId, quantity: 1 }],
+      // 追加枠なら 'payment' (単発払い)、プランなら 'subscription' (継続)
+      mode: isAddOn ? 'payment' : 'subscription', 
+      success_url: `${origin}/${currentLang}/dashboard?success=true`,
+      cancel_url: `${origin}/${currentLang}/pricing?canceled=true`,
+      customer_email: user.email,
+      locale: currentLang === 'ja' ? 'ja' : 'en',
+      metadata: { 
+        userId: user.id,
+        purchaseType: isAddOn ? 'addon' : 'subscription' // Webhookで判別するために必須
+      },
+    })
+
+    if (session.url) {
+      return NextResponse.redirect(session.url, 303)
+    }
+    
+    return NextResponse.redirect(new URL(`/${currentLang}/pricing`, request.url), 303)
+    
+  } catch (error: any) {
+    console.error('Checkout Error:', error)
+    return NextResponse.redirect(new URL(`/${currentLang}/pricing?error=true`, request.url), 303)
+  }
+}
+</file>
+
 <file path="app/api/favorites/route.ts">
 import { NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
@@ -545,7 +646,6 @@ export async function POST(req: Request) {
   try {
     const { videoId } = await req.json()
 
-    // すでに今月の視聴履歴に存在するかチェック
     const { data: subscription } = await supabase
       .from('subscriptions')
       .select('*')
@@ -555,24 +655,65 @@ export async function POST(req: Request) {
 
     if (!subscription) return NextResponse.json({ error: 'No active plan' }, { status: 403 })
 
+    // ★ 修正：今月ではなく「今期の契約期間（1年間）」ですでに見たかチェック
     const { data: alreadyViewed } = await supabase
       .from('viewing_history')
       .select('id')
       .eq('user_id', user.id)
       .eq('vimeo_video_id', videoId)
-      .gte('viewed_at', subscription.current_period_start)
-      .single()
+      .gte('viewed_at', subscription.current_period_start) // 契約開始日（1年前）から
+      .lte('viewed_at', subscription.current_period_end)   // 契約終了日まで
+      .maybeSingle()
 
-    // まだ視聴履歴になければ記録を追加
-    if (!alreadyViewed) {
-      await supabase.from('viewing_history').insert({
-        user_id: user.id,
-        vimeo_video_id: videoId
-      })
+    // すでにこの期間内に視聴済みなら、重複して記録しない
+    if (alreadyViewed)
+      return NextResponse.json({ success: true })
+
+    // 今期の総視聴本数をカウント（年間）
+    const { count } = await supabase
+      .from('viewing_history').select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .gte('viewed_at', subscription.current_period_start)
+      .lte('viewed_at', subscription.current_period_end)
+
+    const currentCount = count || 0
+    // 年契約に合わせた制限（例：ライトなら年120本など。必要に応じて数値を調整してください）
+    const planLimits: Record<string, number> = { light: 10, standard: 30, premium: 1000 }
+    const limit = planLimits[subscription.plan_type] || 0
+
+    if (currentCount >= limit) {
+      // チケット（買い足し枠）のチェックロジックはそのまま維持
+      const { data: credit } = await supabase
+        .from('video_credits')
+        .select('*')
+        .eq('user_id', user.id)
+        .gt('remaining', 0)
+        .gt('expires_at', new Date().toISOString())
+        .order('expires_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (credit) {
+        await supabase
+          .from('video_credits')
+          .update({ remaining: credit.remaining - 1 })
+          .eq('id', credit.id);
+      } else {
+        return NextResponse.json({ error: 'Yearly limit reached' }, { status: 403 })
+      }
     }
 
+    // 新しく視聴履歴を挿入
+    await supabase.from('viewing_history').insert({
+      user_id: user.id,
+      vimeo_video_id: videoId
+    });
+
     return NextResponse.json({ success: true })
-  } catch (error) {
+
+    } catch (error) {
+    // ★ ここで try を閉じ、catch ブロックを配置します
+    console.error('Record View Error:', error)
     return NextResponse.json({ error: 'Server Error' }, { status: 500 })
   }
 }
@@ -676,10 +817,10 @@ body {
     "planLight": "Light",
     "planStandard": "Standard",
     "planPremium": "Premium",
-    "perMonth": " / month",
+    "perMonth": " / year",
     "mostPopular": "Most Popular",
-    "lightFeature1": "Watch up to 10 videos per month",
-    "standardFeature1": "Watch up to 30 videos per month",
+    "lightFeature1": "Watch up to 10 videos per year",
+    "standardFeature1": "Watch up to 30 videos per year",
     "premiumFeature1": "Unlimited video access",
     "featureProgress": "Progress tracking",
     "featureAllAccess": "Access to all sections",
@@ -742,7 +883,9 @@ body {
     "section": "Section ",
     "videosCount": " videos",
     "progress": "Progress: ",
-    "completed": " Completed"
+    "completed": " Completed",
+    "remainingTickets": "Extra Tickets: {count} remaining",
+    "buyTickets": "Buy 10 Extra Video Tickets ($15.00)"
   },
   "section": {
     "backToDashboard": "← Back to Dashboard",
@@ -754,12 +897,12 @@ body {
   "video": {
     "requireSubscription": "A subscription plan is required to watch videos.",
     "toPricing": "Go to Pricing",
-    "limitReachedTitle": "Monthly viewing limit reached ({limit} videos)",
-    "limitMessage": "To watch more videos, please wait for next month's renewal or consider upgrading your plan.",
+    "limitReachedTitle": "Yearly viewing limit reached ({limit} videos)",
+    "limitMessage": "To watch more videos, please wait for next year's renewal or consider upgrading your plan or purchases additional Tickets.",
     "backToDashboard": "← Back to Dashboard",
     "playerTitle": "Video Player",
     "currentPlan": "Current Plan",
-    "monthlyWatchCount": "Monthly Videos Watched",
+    "yearlyWatchCount": "Yearly Videos Watched",
     "unlimited": "Unlimited",
     "videosUnit": " videos",
     "favoriteAdd": "Add to Favorites",
@@ -777,7 +920,7 @@ body {
     "priceLight": "$10.00",
     "priceStandard": "$30.00",
     "pricePremium": "$50.00",
-    "perMonth": "/mo",
+    "perMonth": "/year",
     "subscribed": "Subscribed",
     "selectPlan": "Select Plan",
     "alreadySubscribedError": "You are already subscribed to a plan. Additional purchases are not allowed."
@@ -813,10 +956,10 @@ body {
     "planLight": "ライト",
     "planStandard": "スタンダード",
     "planPremium": "プレミアム",
-    "perMonth": " / 月",
+    "perMonth": " / 年",
     "mostPopular": "一番人気",
-    "lightFeature1": "月間 10本まで視聴可能",
-    "standardFeature1": "月間 30本まで視聴可能",
+    "lightFeature1": "年間 10本まで視聴可能",
+    "standardFeature1": "年間 30本まで視聴可能",
     "premiumFeature1": "動画視聴 無制限",
     "featureProgress": "進捗管理機能",
     "featureAllAccess": "全セクションへのアクセス",
@@ -867,8 +1010,8 @@ body {
     "manageSubscription": "契約内容の確認・変更",
     "noSubscription": "プラン未契約です。",
     "choosePlan": "プランを選択する",
-    "planLight": "ライトプラン（月10本）",
-    "planStandard": "スタンダードプラン（月30本）",
+    "planLight": "ライトプラン（年10本）",
+    "planStandard": "スタンダードプラン（年30本）",
     "planPremium": "プレミアムプラン（無制限）",
     "planNone": "未契約",
     "continueWatching": "続きから見る",
@@ -879,7 +1022,9 @@ body {
     "section": "セクション ",
     "videosCount": " 本",
     "progress": "進捗: ",
-    "completed": " 完了"
+    "completed": " 完了",
+    "remainingTickets": "追加視聴枠：残り {count} 本",
+    "buyTickets": "動画視聴枠を 10本購入する "
   },
   "section": {
     "backToDashboard": "← ダッシュボードへ戻る",
@@ -891,17 +1036,19 @@ body {
   "video": {
     "requireSubscription": "動画を視聴するにはプランの契約が必要です。",
     "toPricing": "プラン選択画面へ",
-    "limitReachedTitle": "今月の視聴上限（{limit}本）に達しました",
+    "limitReachedTitle": "今年の視聴上限（{limit}本）に達しました",
     "limitMessage": "新しい動画を視聴するには、来月の更新をお待ちいただくか、プランの変更をご検討ください。",
     "backToDashboard": "← ダッシュボードに戻る",
     "playerTitle": "授業動画再生",
     "currentPlan": "現在のプラン",
-    "monthlyWatchCount": "今月の視聴本数",
+    "yearlyWatchCount": "今年の視聴本数",
     "unlimited": "無制限",
     "videosUnit": " 本",
     "favoriteAdd": "お気に入りに追加",
     "favoriteRemove": "お気に入り解除",
-    "watchCompleted": "✓ 視聴完了"
+    "watchCompleted": "✓ 視聴完了",
+    "useTicket": "追加チケットを1枚使って視聴する",
+    "noTickets": "視聴枠がありません。チケットを購入してください。"
   },
   "pricing": {
     "title": "学習プランを選択",
@@ -911,10 +1058,10 @@ body {
     "planLight": "ライトプラン",
     "planStandard": "スタンダードプラン",
     "planPremium": "プレミアムプラン",
-    "priceLight": "¥1,000",
-    "priceStandard": "¥3,000",
-    "pricePremium": "¥5,000",
-    "perMonth": "/月",
+    "priceLight": "¥100,000",
+    "priceStandard": "¥500,000",
+    "pricePremium": "¥1,000,000",
+    "perMonth": "/年",
     "subscribed": "契約済み",
     "selectPlan": "プランを選択",
     "alreadySubscribedError": "すでにプランを契約中のため、追加購入はできません"
@@ -923,30 +1070,82 @@ body {
 </file>
 
 <file path="middleware.ts">
+import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-// サポートする言語とデフォルトの言語を設定
-const locales = ['ja', 'en']
-const defaultLocale = 'ja' // 日本語をベースとして設定
+export async function middleware(request: NextRequest) {
+  // 1. レスポンスオブジェクトの初期化
+  let response = NextResponse.next({
+    request: { headers: request.headers },
+  })
 
-export function middleware(request: NextRequest) {
+  // 2. Supabaseクライアントの初期化 (Server Component/Middleware用)
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => request.cookies.getAll(),
+        setAll: (cookiesToSet) => {
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+          response = NextResponse.next({ request })
+          cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options))
+        },
+      },
+    }
+  )
+
+  // セッション情報を取得
+  const { data: { session } } = await supabase.auth.getSession()
   const { pathname } = request.nextUrl
 
-  // URLのパスにすでにロケール（/ja/ や /en/）が含まれているか確認
+  // ----------------------------------------------------------------
+  // A. 1アカウント1ログイン制限ロジック (ダッシュボードと動画ページが対象)
+  // ----------------------------------------------------------------
+  if (session && (pathname.includes('/dashboard') || pathname.includes('/video'))) {
+    // データベースから最新のセッションIDを取得
+    const { data: sub } = await supabase
+      .from('subscriptions')
+      .select('plan_type, current_session_id')
+      .eq('user_id', session.user.id)
+      .maybeSingle();
+
+    // ライト・スタンダードプランのみ判定
+    if (sub?.plan_type === 'light' || sub?.plan_type === 'standard') {
+      const currentTokenId = session.access_token.slice(-20);
+      
+      // DBのIDと手元のトークンIDが一致しない＝別の端末で新しくログインされた
+      if (sub.current_session_id && sub.current_session_id !== currentTokenId) {
+        // 強制ログアウト処理
+        await supabase.auth.signOut();
+        const lang = pathname.startsWith('/en') ? 'en' : 'ja';
+        const redirectUrl = new URL(`/${lang}/login?message=other_device`, request.url);
+        return NextResponse.redirect(redirectUrl);
+      }
+    }
+  }
+
+  // ----------------------------------------------------------------
+  // B. 言語リダイレクトロジック (既存機能)
+  // ----------------------------------------------------------------
+  const locales = ['ja', 'en']
+  const defaultLocale = 'ja'
   const pathnameHasLocale = locales.some(
     (locale) => pathname.startsWith(`/${locale}/`) || pathname === `/${locale}`
   )
 
-  if (pathnameHasLocale) return // すでに含まれていればそのまま通す
+  if (!pathnameHasLocale) {
+    // ロケールが含まれていない場合は、デフォルト言語（/ja）を付与
+    const url = request.nextUrl.clone()
+    url.pathname = `/${defaultLocale}${pathname}`
+    return NextResponse.redirect(url)
+  }
 
-  // ロケールが含まれていない場合は、デフォルト言語（/ja）を付与してリダイレクト
-  request.nextUrl.pathname = `/${defaultLocale}${pathname}`
-  return NextResponse.redirect(request.nextUrl)
+  return response
 }
 
 export const config = {
-  // apiフォルダや画像ファイル、Next.jsの内部ファイル等をリダイレクト対象から外す
   matcher: [
     '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
@@ -1354,11 +1553,11 @@ export default async function HomePage({ params }: { params: Promise<{ lang: 'ja
 
       <main>
         {/* ヒーローセクション（ファーストビュー） */}
-        <section className="relative pt-24 pb-32 overflow-hidden bg-gradient-to-b from-blue-50 to-white">
+        <section className="relative pt-24 pb-32 overflow-hidden bg-linear-to-b from-blue-50 to-white">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
             <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight text-gray-900 mb-6 leading-tight">
               {dict.home.heroTitle1}<br className="hidden md:block" />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-cyan-500">
+              <span className="text-transparent bg-clip-text bg-linear-to-r from-blue-600 to-cyan-500">
                 {dict.home.heroTitle2}
               </span>
             </h1>
@@ -1382,7 +1581,7 @@ export default async function HomePage({ params }: { params: Promise<{ lang: 'ja
           </div>
           
           {/* 背景の装飾 */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-200/30 rounded-full blur-3xl -z-10 pointer-events-none"></div>
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-200 h-200 bg-blue-200/30 rounded-full blur-3xl -z-10 pointer-events-none"></div>
         </section>
 
         {/* 特徴・メリットセクション */}
@@ -1436,7 +1635,7 @@ export default async function HomePage({ params }: { params: Promise<{ lang: 'ja
               {/* プラン1 */}
               <div className="bg-white rounded-2xl p-8 border border-gray-200 shadow-sm text-center">
                 <h3 className="text-lg font-medium text-gray-500 mb-2">{dict.home.planLight}</h3>
-                <p className="text-4xl font-extrabold text-gray-900 mb-6">¥1,000<span className="text-base font-normal text-gray-500">{dict.home.perMonth}</span></p>
+                <p className="text-4xl font-extrabold text-gray-900 mb-6">¥100,000<span className="text-base font-normal text-gray-500">{dict.home.perMonth}</span></p>
                 <ul className="text-left space-y-3 mb-8 text-gray-600">
                   <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> {dict.home.lightFeature1}</li>
                   <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> {dict.home.featureProgress}</li>
@@ -1447,7 +1646,7 @@ export default async function HomePage({ params }: { params: Promise<{ lang: 'ja
               <div className="bg-white rounded-2xl p-8 border-2 border-blue-500 shadow-xl text-center relative transform md:-translate-y-4">
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-blue-500 text-white px-4 py-1 rounded-full text-sm font-bold tracking-wide">{dict.home.mostPopular}</div>
                 <h3 className="text-lg font-medium text-blue-600 mb-2">{dict.home.planStandard}</h3>
-                <p className="text-4xl font-extrabold text-gray-900 mb-6">¥3,000<span className="text-base font-normal text-gray-500">{dict.home.perMonth}</span></p>
+                <p className="text-4xl font-extrabold text-gray-900 mb-6">¥500,000<span className="text-base font-normal text-gray-500">{dict.home.perMonth}</span></p>
                 <ul className="text-left space-y-3 mb-8 text-gray-600">
                   <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> {dict.home.standardFeature1}</li>
                   <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> {dict.home.featureProgress}</li>
@@ -1458,7 +1657,7 @@ export default async function HomePage({ params }: { params: Promise<{ lang: 'ja
               {/* プラン3 */}
               <div className="bg-gray-900 rounded-2xl p-8 border border-gray-800 shadow-sm text-center text-white">
                 <h3 className="text-lg font-medium text-gray-400 mb-2">{dict.home.planPremium}</h3>
-                <p className="text-4xl font-extrabold text-white mb-6">¥5,000<span className="text-base font-normal text-gray-400">{dict.home.perMonth}</span></p>
+                <p className="text-4xl font-extrabold text-white mb-6">¥1,000,000<span className="text-base font-normal text-gray-400">{dict.home.perMonth}</span></p>
                 <ul className="text-left space-y-3 mb-8 text-gray-300">
                   <li className="flex items-center"><span className="text-blue-400 mr-2">✓</span> {dict.home.premiumFeature1}</li>
                   <li className="flex items-center"><span className="text-blue-400 mr-2">✓</span> {dict.home.featureProgress}</li>
@@ -1501,173 +1700,6 @@ export default async function HomePage({ params }: { params: Promise<{ lang: 'ja
         </div>
       </footer>
 
-    </div>
-  )
-}
-</file>
-
-<file path="app/[lang]/pricing/page.tsx">
-import { createClient } from '@/utils/supabase/server'
-import { redirect } from 'next/navigation'
-import Stripe from 'stripe'
-import { getDictionary } from '@/utils/get-dictionary'
-import LanguageSwitcher from '@/app/components/LanguageSwitcher'
-
-export const runtime = 'edge';
-
-export default async function PricingPage({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }) {
-  const { lang } = await params
-  const dict = await getDictionary(lang)
-
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect(`/${lang}/login`)
-  }
-
-  const { data: existingSubscription } = await supabase
-    .from('subscriptions').select('*').eq('user_id', user.id).eq('status', 'active').limit(1).maybeSingle()
-
-  // ★将来のための準備：言語（通貨）に応じた価格IDを返す関数
-  const getPriceId = (plan: 'light' | 'standard' | 'premium', currentLang: string) => {
-    /* * 将来、StripeダッシュボードでUSD用の価格を作成したら、
-     * ここで process.env.STRIPE_PRICE_ID_LIGHT_USD などを返すように変更してください。
-     * 現在はプレースホルダーとして、どちらの言語でも既存のIDを返しています。
-     */
-    if (plan === 'light') return process.env.STRIPE_PRICE_ID_LIGHT;
-    if (plan === 'standard') return process.env.STRIPE_PRICE_ID_STANDARD;
-    if (plan === 'premium') return process.env.STRIPE_PRICE_ID_PREMIUM;
-  }
-
-const handleCheckout = async (formData: FormData) => {
-    'use server'
-    const currentLang = formData.get('lang') as string
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, { apiVersion: '2026-02-25.clover' })
-
-    const supabaseAdmin = await createClient()
-    const { data: checkSub } = await supabaseAdmin
-      .from('subscriptions').select('id').eq('user_id', user.id).eq('status', 'active').limit(1)
-
-    if (checkSub && checkSub.length > 0) {
-      const errorMsg = currentLang === 'ja' ? 'すでにプランを契約中のため、追加購入はできません' : 'You are already subscribed to a plan. Additional purchases are not allowed.'
-      redirect(`/${currentLang}/dashboard?message=` + encodeURIComponent(errorMsg))
-    }
-
-    const priceId = formData.get('priceId') as string
-
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items: [{ price: priceId, quantity: 1 }],
-      mode: 'subscription',
-      success_url: `http://localhost:3000/${currentLang}/dashboard?success=true`,
-      cancel_url: `http://localhost:3000/${currentLang}/pricing?canceled=true`,
-      customer_email: user.email,
-      // ★確認：決済画面の表示言語を強制的に指定します
-      locale: currentLang === 'ja' ? 'ja' : 'en',
-      metadata: { userId: user.id },
-    })
-
-    if (session.url) redirect(session.url)
-  }
-
-  const isSubscribed = !!existingSubscription
-
-  return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8 relative">
-      <div className="absolute top-6 right-6">
-        <LanguageSwitcher currentLang={lang} />
-      </div>
-
-      <div className="max-w-7xl mx-auto mt-8">
-        <div className="text-center">
-          <h2 className="text-3xl font-extrabold text-gray-900 sm:text-4xl">{dict.pricing.title}</h2>
-          <p className="mt-4 text-xl text-gray-600">{dict.pricing.subtitle}</p>
-        </div>
-
-        {isSubscribed && (
-          <div className="mt-8 max-w-3xl mx-auto bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 rounded shadow-sm">
-            <p className="font-bold">{dict.pricing.noticeTitle}</p>
-            <p>{dict.pricing.noticeMessage}</p>
-          </div>
-        )}
-
-        <div className="mt-12 space-y-4 sm:space-y-0 sm:grid sm:grid-cols-3 sm:gap-6 lg:max-w-4xl lg:mx-auto xl:max-w-none xl:mx-0 xl:grid-cols-3">
-          
-          {/* ライトプラン */}
-          <div className="border border-gray-200 rounded-lg shadow-sm divide-y divide-gray-200 bg-white">
-            <div className="p-6">
-              <h3 className="text-lg leading-6 font-medium text-gray-900">{dict.pricing.planLight}</h3>
-              <p className="mt-8">
-                <span className="text-4xl font-extrabold text-gray-900">{dict.pricing.priceLight}</span>
-                <span className="text-base font-medium text-gray-500">{dict.pricing.perMonth}</span>
-              </p>
-              <form action={handleCheckout} className="mt-8">
-                <input type="hidden" name="lang" value={lang} />
-                <input type="hidden" name="priceId" value={getPriceId('light', lang)} />
-                <button 
-                  type="submit" 
-                  disabled={isSubscribed}
-                  className={`w-full text-white rounded-md py-2 text-sm font-semibold transition-colors ${
-                    isSubscribed ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
-                  }`}
-                >
-                  {isSubscribed ? dict.pricing.subscribed : dict.pricing.selectPlan}
-                </button>
-              </form>
-            </div>
-          </div>
-
-          {/* スタンダードプラン */}
-          <div className="border border-blue-500 rounded-lg shadow-md divide-y divide-gray-200 bg-white relative">
-            <div className="p-6">
-              <h3 className="text-lg leading-6 font-medium text-gray-900">{dict.pricing.planStandard}</h3>
-              <p className="mt-8">
-                <span className="text-4xl font-extrabold text-gray-900">{dict.pricing.priceStandard}</span>
-                <span className="text-base font-medium text-gray-500">{dict.pricing.perMonth}</span>
-              </p>
-              <form action={handleCheckout} className="mt-8">
-                <input type="hidden" name="lang" value={lang} />
-                <input type="hidden" name="priceId" value={getPriceId('standard', lang)} />
-                <button 
-                  type="submit" 
-                  disabled={isSubscribed}
-                  className={`w-full text-white rounded-md py-2 text-sm font-semibold transition-colors ${
-                    isSubscribed ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'
-                  }`}
-                >
-                  {isSubscribed ? dict.pricing.subscribed : dict.pricing.selectPlan}
-                </button>
-              </form>
-            </div>
-          </div>
-
-          {/* プレミアムプラン */}
-          <div className="border border-gray-200 rounded-lg shadow-sm divide-y divide-gray-200 bg-white">
-            <div className="p-6">
-              <h3 className="text-lg leading-6 font-medium text-gray-900">{dict.pricing.planPremium}</h3>
-              <p className="mt-8">
-                <span className="text-4xl font-extrabold text-gray-900">{dict.pricing.pricePremium}</span>
-                <span className="text-base font-medium text-gray-500">{dict.pricing.perMonth}</span>
-              </p>
-              <form action={handleCheckout} className="mt-8">
-                <input type="hidden" name="lang" value={lang} />
-                <input type="hidden" name="priceId" value={getPriceId('premium', lang)} />
-                <button 
-                  type="submit" 
-                  disabled={isSubscribed}
-                  className={`w-full text-white rounded-md py-2 text-sm font-semibold transition-colors ${
-                    isSubscribed ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-800 hover:bg-gray-900'
-                  }`}
-                >
-                  {isSubscribed ? dict.pricing.subscribed : dict.pricing.selectPlan}
-                </button>
-              </form>
-            </div>
-          </div>
-
-        </div>
-      </div>
     </div>
   )
 }
@@ -1769,6 +1801,7 @@ import { getDictionary } from '@/utils/get-dictionary'
 import LanguageSwitcher from '@/app/components/LanguageSwitcher'
 
 export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
 
 export default async function VideoPage({ 
   params 
@@ -1803,28 +1836,71 @@ export default async function VideoPage({
   const { count } = await supabase
     .from('viewing_history').select('*', { count: 'exact', head: true })
     .eq('user_id', user.id)
-    .gte('viewed_at', subscription.current_period_start)
-    .lte('viewed_at', subscription.current_period_end)
+    .gte('viewed_at', subscription.current_period_start) // 年間の開始日
+    .lte('viewed_at', subscription.current_period_end);
 
-  const currentCount = count || 0
+  const currentCount = count || 0;
+
+  const { data: credits } = await supabase
+    .from('video_credits')
+    .select('remaining')
+    .eq('user_id', user.id)
+    .gt('remaining', 0)
+    .gt('expires_at', new Date().toISOString());
+
+  const totalTickets = credits?.reduce((acc, curr) => acc + curr.remaining, 0) || 0;
+  const hasTickets = (credits && credits.length > 0);
 
   const { data: alreadyViewed } = await supabase
     .from('viewing_history').select('id').eq('user_id', user.id).eq('vimeo_video_id', videoId)
     .gte('viewed_at', subscription.current_period_start).maybeSingle()
 
-  if (!alreadyViewed && currentCount >= limit) {
+  if (!alreadyViewed && currentCount >= limit && !hasTickets) {
     return (
-      <div className="min-h-screen p-8 bg-gray-50 flex flex-col items-center justify-center relative">
-        <div className="absolute top-6 right-6"><LanguageSwitcher currentLang={lang} /></div>
-        <p className="text-2xl font-bold text-red-600 mb-4">
-          {dict.video.limitReachedTitle.replace('{limit}', limit.toString())}
-        </p>
-        <p className="text-gray-600 mb-6">{dict.video.limitMessage}</p>
-        <Link href={`/${lang}/dashboard`} className="text-blue-600 underline hover:text-blue-800">
-          {dict.video.backToDashboard}
-        </Link>
+      <div className="min-h-screen p-8 bg-gray-50 flex flex-col items-center justify-center text-center">
+        <div className="max-w-md w-full bg-white p-10 rounded-2xl shadow-xl border border-gray-100">
+          <div className="text-5xl mb-6">🚫</div>
+          <h2 className="text-2xl font-black text-slate-900 mb-4">
+            {dict.video.limitReachedTitle.replace('{limit}', limit.toString())}
+          </h2>
+          
+          <p className="text-slate-600 mb-8 leading-relaxed">
+            {dict.video.limitMessage}
+          </p>
+
+          <div className="space-y-4">
+            <form action="/api/portal" method="POST">
+              <input type="hidden" name="lang" value={lang} />
+              <button 
+                type="submit" 
+                className="block w-full py-4 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
+              >
+                {dict.video.toPricing}
+              </button>
+            </form>
+
+            {/* その場で追加チケットを購入するフォーム */}
+            <form action="/api/checkout" method="POST">
+              <input type="hidden" name="lang" value={lang} />
+              <input type="hidden" name="priceId" value={process.env.STRIPE_PRICE_ID_ADDON} />
+              <button 
+                type="submit" 
+                className="w-full py-4 bg-amber-500 text-white font-bold rounded-xl hover:bg-amber-600 transition-all shadow-lg shadow-amber-100"
+              >
+                🎟️ {dict.dashboard.buyTickets}
+              </button>
+            </form>
+
+            <Link 
+              href={`/${lang}/dashboard`} 
+              className="block w-full py-2 text-slate-400 font-medium hover:text-slate-600 transition-colors text-sm"
+            >
+              {dict.video.backToDashboard}
+            </Link>
+          </div>
+        </div>
       </div>
-    )
+    );
   }
 
   const { data: favorite } = await supabase
@@ -1860,15 +1936,21 @@ export default async function VideoPage({
           textCompleted={dict.video.watchCompleted}
         />
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex justify-between items-center">
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 grid grid-cols-1 sm:grid-cols-3 gap-6 items-center">
           <div>
             <p className="text-sm text-gray-500 mb-1">{dict.video.currentPlan}</p>
             <p className="text-lg font-semibold text-blue-900 capitalize">{subscription.plan_type}</p>
           </div>
-          <div className="text-right">
-            <p className="text-sm text-gray-500 mb-1">{dict.video.monthlyWatchCount}</p>
+          <div className="text-center border-t sm:border-t-0 sm:border-x border-gray-100 py-4 sm:py-0">
+            <p className="text-sm text-gray-500 mb-1">{dict.video.yearlyWatchCount}</p>
             <p className="text-lg font-semibold text-gray-800">
               {currentCount} <span className="text-sm font-normal text-gray-500">/ {subscription.plan_type === 'premium' ? dict.video.unlimited : `${limit}${dict.video.videosUnit}`}</span>
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-sm text-amber-600 font-bold mb-1">🎟️ {dict.dashboard.remainingTickets.split('：')[0]}</p>
+            <p className="text-lg font-bold text-amber-700">
+              {totalTickets} <span className="text-sm font-normal text-gray-500">{dict.video.videosUnit}</span>
             </p>
           </div>
         </div>
@@ -2005,6 +2087,136 @@ const nextConfig: NextConfig = {
 export default nextConfig;
 </file>
 
+<file path="app/[lang]/pricing/page.tsx">
+import { createClient } from '@/utils/supabase/server'
+import { redirect } from 'next/navigation'
+import { getDictionary } from '@/utils/get-dictionary'
+import LanguageSwitcher from '@/app/components/LanguageSwitcher'
+
+export const runtime = 'edge';
+
+export default async function PricingPage({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }) {
+  const { lang } = await params
+  const dict = await getDictionary(lang)
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    redirect(`/${lang}/login`)
+  }
+
+  const { data: existingSubscription } = await supabase
+    .from('subscriptions').select('*').eq('user_id', user.id).eq('status', 'active').limit(1).maybeSingle()
+
+  const getPriceId = (plan: 'light' | 'standard' | 'premium', currentLang: string) => {
+    if (plan === 'light') return process.env.STRIPE_PRICE_ID_LIGHT;
+    if (plan === 'standard') return process.env.STRIPE_PRICE_ID_STANDARD;
+    if (plan === 'premium') return process.env.STRIPE_PRICE_ID_PREMIUM;
+  }
+
+  const isSubscribed = !!existingSubscription
+
+  return (
+    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8 relative">
+      <div className="absolute top-6 right-6">
+        <LanguageSwitcher currentLang={lang} />
+      </div>
+
+      <div className="max-w-7xl mx-auto mt-8">
+        <div className="text-center">
+          <h2 className="text-3xl font-extrabold text-gray-900 sm:text-4xl">{dict.pricing.title}</h2>
+          <p className="mt-4 text-xl text-gray-600">{dict.pricing.subtitle}</p>
+        </div>
+
+        {isSubscribed && (
+          <div className="mt-8 max-w-3xl mx-auto bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 rounded shadow-sm">
+            <p className="font-bold">{dict.pricing.noticeTitle}</p>
+            <p>{dict.pricing.noticeMessage}</p>
+          </div>
+        )}
+
+        <div className="mt-12 space-y-4 sm:space-y-0 sm:grid sm:grid-cols-3 sm:gap-6 lg:max-w-4xl lg:mx-auto xl:max-w-none xl:mx-0 xl:grid-cols-3">
+          
+          {/* ライトプラン */}
+          <div className="border border-gray-200 rounded-lg shadow-sm divide-y divide-gray-200 bg-white">
+            <div className="p-6">
+              <h3 className="text-lg leading-6 font-medium text-gray-900">{dict.pricing.planLight}</h3>
+              <p className="mt-8">
+                <span className="text-4xl font-extrabold text-gray-900">{dict.pricing.priceLight}</span>
+                <span className="text-base font-medium text-gray-500">{dict.pricing.perMonth}</span>
+              </p>
+              <form action="/api/checkout" method="POST" className="mt-8">
+                <input type="hidden" name="lang" value={lang} />
+                <input type="hidden" name="priceId" value={getPriceId('light', lang) || ''} />
+                <button 
+                  type="submit" 
+                  disabled={isSubscribed}
+                  className={`w-full text-white rounded-md py-2 text-sm font-semibold transition-colors ${
+                    isSubscribed ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
+                  }`}
+                >
+                  {isSubscribed ? dict.pricing.subscribed : dict.pricing.selectPlan}
+                </button>
+              </form>
+            </div>
+          </div>
+
+          {/* スタンダードプラン */}
+          <div className="border border-blue-500 rounded-lg shadow-md divide-y divide-gray-200 bg-white relative">
+            <div className="p-6">
+              <h3 className="text-lg leading-6 font-medium text-gray-900">{dict.pricing.planStandard}</h3>
+              <p className="mt-8">
+                <span className="text-4xl font-extrabold text-gray-900">{dict.pricing.priceStandard}</span>
+                <span className="text-base font-medium text-gray-500">{dict.pricing.perMonth}</span>
+              </p>
+              <form action="/api/checkout" method="POST" className="mt-8">
+                <input type="hidden" name="lang" value={lang} />
+                <input type="hidden" name="priceId" value={getPriceId('standard', lang) || ''} />
+                <button 
+                  type="submit" 
+                  disabled={isSubscribed}
+                  className={`w-full text-white rounded-md py-2 text-sm font-semibold transition-colors ${
+                    isSubscribed ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'
+                  }`}
+                >
+                  {isSubscribed ? dict.pricing.subscribed : dict.pricing.selectPlan}
+                </button>
+              </form>
+            </div>
+          </div>
+
+          {/* プレミアムプラン */}
+          <div className="border border-gray-200 rounded-lg shadow-sm divide-y divide-gray-200 bg-white">
+            <div className="p-6">
+              <h3 className="text-lg leading-6 font-medium text-gray-900">{dict.pricing.planPremium}</h3>
+              <p className="mt-8">
+                <span className="text-4xl font-extrabold text-gray-900">{dict.pricing.pricePremium}</span>
+                <span className="text-base font-medium text-gray-500">{dict.pricing.perMonth}</span>
+              </p>
+              <form action="/api/checkout" method="POST" className="mt-8">
+                <input type="hidden" name="lang" value={lang} />
+                <input type="hidden" name="priceId" value={getPriceId('premium', lang) || ''} />
+                <button 
+                  type="submit" 
+                  disabled={isSubscribed}
+                  className={`w-full text-white rounded-md py-2 text-sm font-semibold transition-colors ${
+                    isSubscribed ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-800 hover:bg-gray-900'
+                  }`}
+                >
+                  {isSubscribed ? dict.pricing.subscribed : dict.pricing.selectPlan}
+                </button>
+              </form>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  )
+}
+</file>
+
 <file path="app/api/portal/route.ts">
 import { NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
@@ -2105,9 +2317,51 @@ export async function POST(req: Request) {
   // これにより、ログイン情報（Cookie）がないWebhookからの通信でもデータベースを操作できます
   const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY! // .env.local に必ず追加してください
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
+  // 1. 【最優先】チェックアウト完了イベントの処理
+  console.log('--- Webhook受信開始 ---');
+  console.log('Event Type:', event.type);
+
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object as Stripe.Checkout.Session;
+    
+    // ★重要：ここに出る値をチェックしてください
+    console.log('受信したメタデータ:', session.metadata);
+    console.log('判定用の購入タイプ:', session.metadata?.purchaseType);
+
+    if (session.metadata?.purchaseType === 'addon') {
+      console.log('★アドオン購入（チケット）のブロックに進入しました');
+      
+      const userId = session.metadata.userId;
+      if (userId) {
+        const expiresAt = new Date();
+        expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+
+        // INSERT実行
+        const { data, error } = await supabaseAdmin.from('video_credits').insert({
+          user_id: userId,
+          amount: 10,
+          remaining: 10,
+          expires_at: expiresAt.toISOString(),
+        }).select();
+
+        if (error) {
+          console.error('❌DB挿入エラー:', error.message);
+        } else {
+          console.log('✅DB挿入成功！挿入されたデータ:', data);
+        }
+      } else {
+        console.log('❌userIdがメタデータにありません');
+      }
+      return NextResponse.json({ received: true });
+    } else {
+      console.log('⚠️ purchaseTypeがaddonではありません（サブスクとして処理されます）');
+    }
+  }
+
+  // 2. 【サブスクリプション用】更新・削除・新規契約のロジック
   if (
     event.type === 'checkout.session.completed' ||
     event.type === 'customer.subscription.updated' ||
@@ -2115,7 +2369,6 @@ export async function POST(req: Request) {
   ) {
     const object = event.data.object as Stripe.Checkout.Session | Stripe.Subscription
     
-    // サブスクリプションIDの取得
     let stripeSubscriptionId: string
     if (event.type === 'checkout.session.completed') {
       const session = object as Stripe.Checkout.Session
@@ -2124,69 +2377,42 @@ export async function POST(req: Request) {
       const subscription = object as Stripe.Subscription
       stripeSubscriptionId = subscription.id
     }
-    
-    // Stripeから最新のサブスク情報を取得
-    const fullSubscription = await stripe.subscriptions.retrieve(stripeSubscriptionId) as Stripe.Subscription
-    const subscriptionItem = fullSubscription.items.data[0]
 
-    // ユーザーIDの特定
-    let userId: string | undefined
-
-    if (event.type === 'checkout.session.completed') {
-      const session = object as Stripe.Checkout.Session
-      userId = session.metadata?.userId
-      console.log('新規契約: userIdをメタデータから取得 ->', userId) // ★デバッグログ
-    } else {
-      console.log('契約更新/解約: StripeサブスクIDでユーザーを検索 ->', stripeSubscriptionId) // ★デバッグログ
-      // ★ supabaseAdmin を使用して既存の契約からユーザーを特定
-      const { data: existingSub, error: searchError } = await supabaseAdmin
-        .from('subscriptions')
-        .select('user_id')
-        .eq('stripe_subscription_id', stripeSubscriptionId)
-        .maybeSingle()
-      
-      if (searchError) {
-        console.error('ユーザー検索エラー:', searchError.message) // ★デバッグログ
-      }
-      
-      userId = existingSub?.user_id
-      console.log('検索結果のuserId ->', userId) // ★デバッグログ
-    }
-
-    if (userId) {
+    // アドオンでない場合のみ、Stripeから詳細なサブスク情報を取得
+    if (stripeSubscriptionId) {
+      const fullSubscription = await stripe.subscriptions.retrieve(stripeSubscriptionId) as Stripe.Subscription
+      const subscriptionItem = fullSubscription.items.data[0]
       const planId = subscriptionItem.price.id
 
-// ★ここからデバッグログを追加
-      console.log('--- プラン判定のデバッグ ---')
-      console.log('Stripeから受信したPrice ID:', planId)
-      console.log('環境変数(STANDARD)の値:', process.env.STRIPE_PRICE_ID_STANDARD)
-      console.log('環境変数(PREMIUM)の値:', process.env.STRIPE_PRICE_ID_PREMIUM)
-      console.log('----------------------------')
-      // ★ここまで
-
-      let planType = 'light'
-      if (planId === process.env.STRIPE_PRICE_ID_STANDARD) planType = 'standard'
-      if (planId === process.env.STRIPE_PRICE_ID_PREMIUM) planType = 'premium'
-
-      console.log('DBを更新します。ユーザー:', userId, 'プラン:', planType, 'ステータス:', fullSubscription.status) // ★デバッグログ
-
-      // ★ supabaseAdmin を使用してデータベースを更新
-      const { error } = await supabaseAdmin.from('subscriptions').upsert({
-        user_id: userId,
-        stripe_subscription_id: stripeSubscriptionId,
-        plan_type: planType,
-        status: fullSubscription.status,
-        current_period_start: new Date(subscriptionItem.current_period_start * 1000).toISOString(),
-        current_period_end: new Date(subscriptionItem.current_period_end * 1000).toISOString(),
-      }, { onConflict: 'user_id' })
-
-      if (error) {
-        console.error('★Database Update Error:', error.message) // ★デバッグログ
+      let userId: string | undefined
+      if (event.type === 'checkout.session.completed') {
+        const session = object as Stripe.Checkout.Session
+        userId = session.metadata?.userId
       } else {
-        console.log('★DBの更新に成功しました！') // ★デバッグログ
+        const { data: existingSub } = await supabaseAdmin
+          .from('subscriptions')
+          .select('user_id')
+          .eq('stripe_subscription_id', stripeSubscriptionId)
+          .maybeSingle()
+        userId = existingSub?.user_id
       }
-    } else {
-      console.log('★userIdが特定できなかったため、DB更新をスキップしました') // ★デバッグログ
+
+      if (userId) {
+        let planType = 'light'
+        if (planId === process.env.STRIPE_PRICE_ID_STANDARD) planType = 'standard'
+        if (planId === process.env.STRIPE_PRICE_ID_PREMIUM) planType = 'premium'
+
+        await supabaseAdmin.from('subscriptions').upsert({
+          user_id: userId,
+          stripe_subscription_id: stripeSubscriptionId,
+          plan_type: planType,
+          status: fullSubscription.status,
+          current_period_start: new Date(subscriptionItem.current_period_start * 1000).toISOString(),
+          current_period_end: new Date(subscriptionItem.current_period_end * 1000).toISOString(),
+        }, { onConflict: 'user_id' })
+        
+        console.log(`★サブスクDB更新完了: ${planType}`)
+      }
     }
   }
 
@@ -2212,7 +2438,7 @@ export async function POST(req: Request) {
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "jsx": "react-jsx",
+    "jsx": "preserve",
     "incremental": true,
     "plugins": [
       {
@@ -2248,6 +2474,8 @@ import { getDictionary } from '@/utils/get-dictionary'
 import LanguageSwitcher from '@/app/components/LanguageSwitcher'
 
 export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 type Video = { id: string; title: string; vimeo_id: string; thumbnail_url: string | null }
 
@@ -2264,6 +2492,15 @@ export default async function DashboardPage({ params }: { params: Promise<{ lang
 
   const { data: subscription } = await supabase
     .from('subscriptions').select('*').eq('user_id', user.id).eq('status', 'active').limit(1).maybeSingle()
+
+    const { data: credits } = await supabase
+      .from('video_credits')
+      .select('remaining')
+      .eq('user_id', user.id)
+      .gt('expires_at', new Date().toISOString());
+
+    // すべての有効なレコードの remaining を合計します
+    const totalTickets = credits?.reduce((acc, curr) => acc + curr.remaining, 0) || 0;
 
   const { data: videos } = await supabase.from('videos').select('*')
   
@@ -2323,7 +2560,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ lang
     return (
       <Link href={`/${lang}/video/${video.vimeo_id}`} className="block group">
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-lg transition-all hover:border-blue-300 flex items-center p-3 gap-4 relative">
-          <div className="w-32 aspect-video bg-gray-100 rounded-lg flex-shrink-0 relative overflow-hidden flex items-center justify-center">
+          <div className="w-32 aspect-video bg-gray-100 rounded-lg shrink-0 relative overflow-hidden flex items-center justify-center">
             {video.thumbnail_url ? (
                <img src={video.thumbnail_url} alt={video.title} className="object-cover w-full h-full group-hover:scale-105 transition-transform" />
             ) : (
@@ -2333,7 +2570,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ lang
               <div className="absolute top-1 right-1 bg-green-500 text-white text-[10px] px-1.5 py-0.5 rounded shadow-sm font-bold">✓</div>
             )}
           </div>
-          <div className="flex-grow">
+          <div className="grow">
             {label && <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded mb-1 inline-block">{label}</span>}
             <h3 className="font-bold text-gray-900 group-hover:text-blue-600 transition-colors line-clamp-2">{video.title}</h3>
           </div>
@@ -2375,7 +2612,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ lang
           <p className="mb-4 text-gray-600">
             {dict.dashboard.welcome}<span className="font-semibold text-gray-800">{user.email}</span>{dict.dashboard.honorific}
           </p>
-          <div className="bg-gradient-to-r from-blue-50 border-l-4 border-blue-500 rounded-r-md p-6">
+          <div className="bg-linear-to-r from-blue-50 border-l-4 border-blue-500 rounded-r-md p-6">
             <h2 className="text-sm font-bold text-blue-800 mb-2 tracking-wider">{dict.dashboard.subscriptionStatus}</h2>
             {subscription ? (
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -2401,6 +2638,34 @@ export default async function DashboardPage({ params }: { params: Promise<{ lang
                 </Link>
               </div>
             )}
+
+            <div className="mt-6 pt-6 border-t border-blue-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center text-xl">
+                  🎟️
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-blue-900">
+                    {/* 残り本数を辞書から引く/dashboard/page.tsx, ja.json] */}
+                    {dict.dashboard.remainingTickets.replace('{count}', totalTickets.toString())}
+                  </p>
+                  <p className="text-[10px] text-blue-600 font-medium">※有効期限は購入から1年間です</p>
+                </div>
+              </div>
+              
+              {/* 購入用フォーム：APIへPOSTリクエストを送る/dashboard/page.tsx, app/api/checkout/route.ts] */}
+              <form action="/api/checkout" method="POST">
+                <input type="hidden" name="lang" value={lang} />
+                {/* .env.local で定義したチケット用Price ID */}
+                <input type="hidden" name="priceId" value={process.env.STRIPE_PRICE_ID_ADDON} />
+                <button 
+                  type="submit" 
+                  className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-extrabold rounded-lg shadow-md transition-all active:scale-95"
+                >
+                  {dict.dashboard.buyTickets}
+                </button>
+              </form>
+            </div>
           </div>
         </div>
 

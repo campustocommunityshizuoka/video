@@ -12,6 +12,8 @@ export async function POST(request: Request) {
   // URLから動的にオリジンを取得
   const origin = new URL(request.url).origin
 
+  const isAddOn = priceId === process.env.STRIPE_PRICE_ID_ADDON;
+
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -23,7 +25,7 @@ export async function POST(request: Request) {
     const { data: checkSub } = await supabase
       .from('subscriptions').select('id').eq('user_id', user.id).eq('status', 'active').limit(1)
 
-    if (checkSub && checkSub.length > 0) {
+    if (!isAddOn && checkSub && checkSub.length > 0) {
       const errorMsg = currentLang === 'ja' ? 'すでにプランを契約中のため、追加購入はできません' : 'You are already subscribed to a plan. Additional purchases are not allowed.'
       return NextResponse.redirect(new URL(`/${currentLang}/dashboard?message=${encodeURIComponent(errorMsg)}`, request.url), 303)
     }
@@ -35,12 +37,16 @@ export async function POST(request: Request) {
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [{ price: priceId, quantity: 1 }],
-      mode: 'subscription',
+      // 追加枠なら 'payment' (単発払い)、プランなら 'subscription' (継続)
+      mode: isAddOn ? 'payment' : 'subscription', 
       success_url: `${origin}/${currentLang}/dashboard?success=true`,
       cancel_url: `${origin}/${currentLang}/pricing?canceled=true`,
       customer_email: user.email,
       locale: currentLang === 'ja' ? 'ja' : 'en',
-      metadata: { userId: user.id },
+      metadata: { 
+        userId: user.id,
+        purchaseType: isAddOn ? 'addon' : 'subscription' // Webhookで判別するために必須
+      },
     })
 
     if (session.url) {

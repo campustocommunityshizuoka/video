@@ -30,9 +30,51 @@ export async function POST(req: Request) {
   // これにより、ログイン情報（Cookie）がないWebhookからの通信でもデータベースを操作できます
   const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY! // .env.local に必ず追加してください
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
+  // 1. 【最優先】チェックアウト完了イベントの処理
+  console.log('--- Webhook受信開始 ---');
+  console.log('Event Type:', event.type);
+
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object as Stripe.Checkout.Session;
+    
+    // ★重要：ここに出る値をチェックしてください
+    console.log('受信したメタデータ:', session.metadata);
+    console.log('判定用の購入タイプ:', session.metadata?.purchaseType);
+
+    if (session.metadata?.purchaseType === 'addon') {
+      console.log('★アドオン購入（チケット）のブロックに進入しました');
+      
+      const userId = session.metadata.userId;
+      if (userId) {
+        const expiresAt = new Date();
+        expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+
+        // INSERT実行
+        const { data, error } = await supabaseAdmin.from('video_credits').insert({
+          user_id: userId,
+          amount: 10,
+          remaining: 10,
+          expires_at: expiresAt.toISOString(),
+        }).select();
+
+        if (error) {
+          console.error('❌DB挿入エラー:', error.message);
+        } else {
+          console.log('✅DB挿入成功！挿入されたデータ:', data);
+        }
+      } else {
+        console.log('❌userIdがメタデータにありません');
+      }
+      return NextResponse.json({ received: true });
+    } else {
+      console.log('⚠️ purchaseTypeがaddonではありません（サブスクとして処理されます）');
+    }
+  }
+
+  // 2. 【サブスクリプション用】更新・削除・新規契約のロジック
   if (
     event.type === 'checkout.session.completed' ||
     event.type === 'customer.subscription.updated' ||
@@ -40,7 +82,6 @@ export async function POST(req: Request) {
   ) {
     const object = event.data.object as Stripe.Checkout.Session | Stripe.Subscription
     
-    // サブスクリプションIDの取得
     let stripeSubscriptionId: string
     if (event.type === 'checkout.session.completed') {
       const session = object as Stripe.Checkout.Session
@@ -49,69 +90,42 @@ export async function POST(req: Request) {
       const subscription = object as Stripe.Subscription
       stripeSubscriptionId = subscription.id
     }
-    
-    // Stripeから最新のサブスク情報を取得
-    const fullSubscription = await stripe.subscriptions.retrieve(stripeSubscriptionId) as Stripe.Subscription
-    const subscriptionItem = fullSubscription.items.data[0]
 
-    // ユーザーIDの特定
-    let userId: string | undefined
-
-    if (event.type === 'checkout.session.completed') {
-      const session = object as Stripe.Checkout.Session
-      userId = session.metadata?.userId
-      console.log('新規契約: userIdをメタデータから取得 ->', userId) // ★デバッグログ
-    } else {
-      console.log('契約更新/解約: StripeサブスクIDでユーザーを検索 ->', stripeSubscriptionId) // ★デバッグログ
-      // ★ supabaseAdmin を使用して既存の契約からユーザーを特定
-      const { data: existingSub, error: searchError } = await supabaseAdmin
-        .from('subscriptions')
-        .select('user_id')
-        .eq('stripe_subscription_id', stripeSubscriptionId)
-        .maybeSingle()
-      
-      if (searchError) {
-        console.error('ユーザー検索エラー:', searchError.message) // ★デバッグログ
-      }
-      
-      userId = existingSub?.user_id
-      console.log('検索結果のuserId ->', userId) // ★デバッグログ
-    }
-
-    if (userId) {
+    // アドオンでない場合のみ、Stripeから詳細なサブスク情報を取得
+    if (stripeSubscriptionId) {
+      const fullSubscription = await stripe.subscriptions.retrieve(stripeSubscriptionId) as Stripe.Subscription
+      const subscriptionItem = fullSubscription.items.data[0]
       const planId = subscriptionItem.price.id
 
-// ★ここからデバッグログを追加
-      console.log('--- プラン判定のデバッグ ---')
-      console.log('Stripeから受信したPrice ID:', planId)
-      console.log('環境変数(STANDARD)の値:', process.env.STRIPE_PRICE_ID_STANDARD)
-      console.log('環境変数(PREMIUM)の値:', process.env.STRIPE_PRICE_ID_PREMIUM)
-      console.log('----------------------------')
-      // ★ここまで
-
-      let planType = 'light'
-      if (planId === process.env.STRIPE_PRICE_ID_STANDARD) planType = 'standard'
-      if (planId === process.env.STRIPE_PRICE_ID_PREMIUM) planType = 'premium'
-
-      console.log('DBを更新します。ユーザー:', userId, 'プラン:', planType, 'ステータス:', fullSubscription.status) // ★デバッグログ
-
-      // ★ supabaseAdmin を使用してデータベースを更新
-      const { error } = await supabaseAdmin.from('subscriptions').upsert({
-        user_id: userId,
-        stripe_subscription_id: stripeSubscriptionId,
-        plan_type: planType,
-        status: fullSubscription.status,
-        current_period_start: new Date(subscriptionItem.current_period_start * 1000).toISOString(),
-        current_period_end: new Date(subscriptionItem.current_period_end * 1000).toISOString(),
-      }, { onConflict: 'user_id' })
-
-      if (error) {
-        console.error('★Database Update Error:', error.message) // ★デバッグログ
+      let userId: string | undefined
+      if (event.type === 'checkout.session.completed') {
+        const session = object as Stripe.Checkout.Session
+        userId = session.metadata?.userId
       } else {
-        console.log('★DBの更新に成功しました！') // ★デバッグログ
+        const { data: existingSub } = await supabaseAdmin
+          .from('subscriptions')
+          .select('user_id')
+          .eq('stripe_subscription_id', stripeSubscriptionId)
+          .maybeSingle()
+        userId = existingSub?.user_id
       }
-    } else {
-      console.log('★userIdが特定できなかったため、DB更新をスキップしました') // ★デバッグログ
+
+      if (userId) {
+        let planType = 'light'
+        if (planId === process.env.STRIPE_PRICE_ID_STANDARD) planType = 'standard'
+        if (planId === process.env.STRIPE_PRICE_ID_PREMIUM) planType = 'premium'
+
+        await supabaseAdmin.from('subscriptions').upsert({
+          user_id: userId,
+          stripe_subscription_id: stripeSubscriptionId,
+          plan_type: planType,
+          status: fullSubscription.status,
+          current_period_start: new Date(subscriptionItem.current_period_start * 1000).toISOString(),
+          current_period_end: new Date(subscriptionItem.current_period_end * 1000).toISOString(),
+        }, { onConflict: 'user_id' })
+        
+        console.log(`★サブスクDB更新完了: ${planType}`)
+      }
     }
   }
 

@@ -6,6 +6,8 @@ import { getDictionary } from '@/utils/get-dictionary'
 import LanguageSwitcher from '@/app/components/LanguageSwitcher'
 
 export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 type Video = { id: string; title: string; vimeo_id: string; thumbnail_url: string | null }
 
@@ -22,6 +24,15 @@ export default async function DashboardPage({ params }: { params: Promise<{ lang
 
   const { data: subscription } = await supabase
     .from('subscriptions').select('*').eq('user_id', user.id).eq('status', 'active').limit(1).maybeSingle()
+
+    const { data: credits } = await supabase
+      .from('video_credits')
+      .select('remaining')
+      .eq('user_id', user.id)
+      .gt('expires_at', new Date().toISOString());
+
+    // すべての有効なレコードの remaining を合計します
+    const totalTickets = credits?.reduce((acc, curr) => acc + curr.remaining, 0) || 0;
 
   const { data: videos } = await supabase.from('videos').select('*')
   
@@ -81,7 +92,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ lang
     return (
       <Link href={`/${lang}/video/${video.vimeo_id}`} className="block group">
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-lg transition-all hover:border-blue-300 flex items-center p-3 gap-4 relative">
-          <div className="w-32 aspect-video bg-gray-100 rounded-lg flex-shrink-0 relative overflow-hidden flex items-center justify-center">
+          <div className="w-32 aspect-video bg-gray-100 rounded-lg shrink-0 relative overflow-hidden flex items-center justify-center">
             {video.thumbnail_url ? (
                <img src={video.thumbnail_url} alt={video.title} className="object-cover w-full h-full group-hover:scale-105 transition-transform" />
             ) : (
@@ -91,7 +102,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ lang
               <div className="absolute top-1 right-1 bg-green-500 text-white text-[10px] px-1.5 py-0.5 rounded shadow-sm font-bold">✓</div>
             )}
           </div>
-          <div className="flex-grow">
+          <div className="grow">
             {label && <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded mb-1 inline-block">{label}</span>}
             <h3 className="font-bold text-gray-900 group-hover:text-blue-600 transition-colors line-clamp-2">{video.title}</h3>
           </div>
@@ -133,7 +144,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ lang
           <p className="mb-4 text-gray-600">
             {dict.dashboard.welcome}<span className="font-semibold text-gray-800">{user.email}</span>{dict.dashboard.honorific}
           </p>
-          <div className="bg-gradient-to-r from-blue-50 border-l-4 border-blue-500 rounded-r-md p-6">
+          <div className="bg-linear-to-r from-blue-50 border-l-4 border-blue-500 rounded-r-md p-6">
             <h2 className="text-sm font-bold text-blue-800 mb-2 tracking-wider">{dict.dashboard.subscriptionStatus}</h2>
             {subscription ? (
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -159,6 +170,34 @@ export default async function DashboardPage({ params }: { params: Promise<{ lang
                 </Link>
               </div>
             )}
+
+            <div className="mt-6 pt-6 border-t border-blue-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center text-xl">
+                  🎟️
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-blue-900">
+                    {/* 残り本数を辞書から引く/dashboard/page.tsx, ja.json] */}
+                    {dict.dashboard.remainingTickets.replace('{count}', totalTickets.toString())}
+                  </p>
+                  <p className="text-[10px] text-blue-600 font-medium">※有効期限は購入から1年間です</p>
+                </div>
+              </div>
+              
+              {/* 購入用フォーム：APIへPOSTリクエストを送る/dashboard/page.tsx, app/api/checkout/route.ts] */}
+              <form action="/api/checkout" method="POST">
+                <input type="hidden" name="lang" value={lang} />
+                {/* .env.local で定義したチケット用Price ID */}
+                <input type="hidden" name="priceId" value={process.env.STRIPE_PRICE_ID_ADDON} />
+                <button 
+                  type="submit" 
+                  className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-extrabold rounded-lg shadow-md transition-all active:scale-95"
+                >
+                  {dict.dashboard.buyTickets}
+                </button>
+              </form>
+            </div>
           </div>
         </div>
 

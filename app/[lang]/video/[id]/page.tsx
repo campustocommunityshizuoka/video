@@ -7,6 +7,7 @@ import { getDictionary } from '@/utils/get-dictionary'
 import LanguageSwitcher from '@/app/components/LanguageSwitcher'
 
 export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
 
 export default async function VideoPage({ 
   params 
@@ -41,28 +42,71 @@ export default async function VideoPage({
   const { count } = await supabase
     .from('viewing_history').select('*', { count: 'exact', head: true })
     .eq('user_id', user.id)
-    .gte('viewed_at', subscription.current_period_start)
-    .lte('viewed_at', subscription.current_period_end)
+    .gte('viewed_at', subscription.current_period_start) // 年間の開始日
+    .lte('viewed_at', subscription.current_period_end);
 
-  const currentCount = count || 0
+  const currentCount = count || 0;
+
+  const { data: credits } = await supabase
+    .from('video_credits')
+    .select('remaining')
+    .eq('user_id', user.id)
+    .gt('remaining', 0)
+    .gt('expires_at', new Date().toISOString());
+
+  const totalTickets = credits?.reduce((acc, curr) => acc + curr.remaining, 0) || 0;
+  const hasTickets = (credits && credits.length > 0);
 
   const { data: alreadyViewed } = await supabase
     .from('viewing_history').select('id').eq('user_id', user.id).eq('vimeo_video_id', videoId)
     .gte('viewed_at', subscription.current_period_start).maybeSingle()
 
-  if (!alreadyViewed && currentCount >= limit) {
+  if (!alreadyViewed && currentCount >= limit && !hasTickets) {
     return (
-      <div className="min-h-screen p-8 bg-gray-50 flex flex-col items-center justify-center relative">
-        <div className="absolute top-6 right-6"><LanguageSwitcher currentLang={lang} /></div>
-        <p className="text-2xl font-bold text-red-600 mb-4">
-          {dict.video.limitReachedTitle.replace('{limit}', limit.toString())}
-        </p>
-        <p className="text-gray-600 mb-6">{dict.video.limitMessage}</p>
-        <Link href={`/${lang}/dashboard`} className="text-blue-600 underline hover:text-blue-800">
-          {dict.video.backToDashboard}
-        </Link>
+      <div className="min-h-screen p-8 bg-gray-50 flex flex-col items-center justify-center text-center">
+        <div className="max-w-md w-full bg-white p-10 rounded-2xl shadow-xl border border-gray-100">
+          <div className="text-5xl mb-6">🚫</div>
+          <h2 className="text-2xl font-black text-slate-900 mb-4">
+            {dict.video.limitReachedTitle.replace('{limit}', limit.toString())}
+          </h2>
+          
+          <p className="text-slate-600 mb-8 leading-relaxed">
+            {dict.video.limitMessage}
+          </p>
+
+          <div className="space-y-4">
+            <form action="/api/portal" method="POST">
+              <input type="hidden" name="lang" value={lang} />
+              <button 
+                type="submit" 
+                className="block w-full py-4 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
+              >
+                {dict.video.toPricing}
+              </button>
+            </form>
+
+            {/* その場で追加チケットを購入するフォーム */}
+            <form action="/api/checkout" method="POST">
+              <input type="hidden" name="lang" value={lang} />
+              <input type="hidden" name="priceId" value={process.env.STRIPE_PRICE_ID_ADDON} />
+              <button 
+                type="submit" 
+                className="w-full py-4 bg-amber-500 text-white font-bold rounded-xl hover:bg-amber-600 transition-all shadow-lg shadow-amber-100"
+              >
+                🎟️ {dict.dashboard.buyTickets}
+              </button>
+            </form>
+
+            <Link 
+              href={`/${lang}/dashboard`} 
+              className="block w-full py-2 text-slate-400 font-medium hover:text-slate-600 transition-colors text-sm"
+            >
+              {dict.video.backToDashboard}
+            </Link>
+          </div>
+        </div>
       </div>
-    )
+    );
   }
 
   const { data: favorite } = await supabase
@@ -98,15 +142,21 @@ export default async function VideoPage({
           textCompleted={dict.video.watchCompleted}
         />
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex justify-between items-center">
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 grid grid-cols-1 sm:grid-cols-3 gap-6 items-center">
           <div>
             <p className="text-sm text-gray-500 mb-1">{dict.video.currentPlan}</p>
             <p className="text-lg font-semibold text-blue-900 capitalize">{subscription.plan_type}</p>
           </div>
-          <div className="text-right">
-            <p className="text-sm text-gray-500 mb-1">{dict.video.monthlyWatchCount}</p>
+          <div className="text-center border-t sm:border-t-0 sm:border-x border-gray-100 py-4 sm:py-0">
+            <p className="text-sm text-gray-500 mb-1">{dict.video.yearlyWatchCount}</p>
             <p className="text-lg font-semibold text-gray-800">
               {currentCount} <span className="text-sm font-normal text-gray-500">/ {subscription.plan_type === 'premium' ? dict.video.unlimited : `${limit}${dict.video.videosUnit}`}</span>
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-sm text-amber-600 font-bold mb-1">🎟️ {dict.dashboard.remainingTickets.split('：')[0]}</p>
+            <p className="text-lg font-bold text-amber-700">
+              {totalTickets} <span className="text-sm font-normal text-gray-500">{dict.video.videosUnit}</span>
             </p>
           </div>
         </div>

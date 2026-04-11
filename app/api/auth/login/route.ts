@@ -15,7 +15,7 @@ export async function POST(request: Request) {
 
   try {
     const supabase = await createClient()
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data , error } = await supabase.auth.signInWithPassword({
       email,
       password,
     })
@@ -23,7 +23,24 @@ export async function POST(request: Request) {
     if (error) {
       console.error('ログインエラー:', error.message)
       redirectUrl = `/${currentLang}/login?message=error`
-    } else {
+    } else if (data.session) {
+      // ★ ここから追加：セッションIDをDBに記録
+      const user = data.session.user
+      const { data: sub } = await supabase
+        .from('subscriptions')
+        .select('plan_type')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      // ライト・スタンダードのみ制限
+      if (sub?.plan_type === 'light' || sub?.plan_type === 'standard') {
+        const sessionId = data.session.access_token.slice(-20)
+        const { error: updateError } = await supabase
+          .from('subscriptions')
+          .update({ current_session_id: sessionId })
+          .eq('user_id', user.id)
+      }
+      
       redirectUrl = `/${currentLang}/dashboard`
     }
   } catch (e: any) {
