@@ -8,11 +8,12 @@ export async function POST(request: Request) {
   const formData = await request.formData()
   const currentLang = formData.get('lang') as string || 'ja'
   const priceId = formData.get('priceId') as string
+  const type = formData.get('type') as string;
   
   // URLから動的にオリジンを取得
   const origin = new URL(request.url).origin
 
-  const isAddOn = priceId === process.env.STRIPE_PRICE_ID_ADDON;
+  const isAddOn = type === 'addon' || priceId === process.env.STRIPE_PRICE_ID_ADDON;
 
   try {
     const supabase = await createClient()
@@ -22,12 +23,43 @@ export async function POST(request: Request) {
       return NextResponse.redirect(new URL(`/${currentLang}/login`, request.url), 303)
     }
 
-    const { data: checkSub } = await supabase
-      .from('subscriptions').select('id').eq('user_id', user.id).eq('status', 'active').limit(1)
+// 現在のアクティブなサブスクを取得
+    const { data: subscription } = await supabase
+      .from('subscriptions')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('status', 'active')
+      .maybeSingle()
 
-    if (!isAddOn && checkSub && checkSub.length > 0) {
-      const errorMsg = currentLang === 'ja' ? 'すでにプランを契約中のため、追加購入はできません' : 'You are already subscribed to a plan. Additional purchases are not allowed.'
+    if (!isAddOn && subscription) {
+      const errorMsg = currentLang === 'ja' 
+        ? 'すでにプランを契約中のため、新しく契約することはできません。' 
+        : 'You already have an active subscription.';
       return NextResponse.redirect(new URL(`/${currentLang}/dashboard?message=${encodeURIComponent(errorMsg)}`, request.url), 303)
+    }
+
+      // 2. 有効な追加チケットの残数を合計
+      if (isAddOn && subscription) {
+      const planLimits: Record<string, number> = { light: 10, standard: 30, premium: 1000 };
+      const baseLimit = planLimits[subscription.plan_type] || 0;
+
+      // 有効なチケットの残数を取得
+      const { data: credits } = await supabase
+        .from('video_credits')
+        .select('remaining')
+        .eq('user_id', user.id)
+        .gt('remaining', 0)
+        .gt('expires_at', new Date().toISOString());
+
+      const totalAdditional = credits?.reduce((acc, curr) => acc + curr.remaining, 0) || 0;
+
+      // 合計（基本枠 + 追加枠）が100本以上ならブロック
+      if (baseLimit + totalAdditional >= 100) {
+        const errorMsg = currentLang === 'ja' 
+          ? '視聴枠の合計が上限（100本）に達しているため、追加購入はできません。' 
+          : 'Total capacity has reached the limit (100).';
+        return NextResponse.redirect(new URL(`/${currentLang}/dashboard?message=${encodeURIComponent(errorMsg)}`, request.url), 303)
+      }
     }
 
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {

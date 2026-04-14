@@ -29,17 +29,33 @@ export default async function DashboardPage({ params }: { params: Promise<{ lang
       .from('video_credits')
       .select('remaining')
       .eq('user_id', user.id)
+      .gt('remaining', 0)
       .gt('expires_at', new Date().toISOString());
 
     // すべての有効なレコードの remaining を合計します
     const totalTickets = credits?.reduce((acc, curr) => acc + curr.remaining, 0) || 0;
 
-  const { data: videos } = await supabase.from('videos').select('*')
-  
-  const { data: history } = await supabase
-    .from('viewing_history').select('vimeo_video_id').eq('user_id', user.id)
-  
-  const viewedIds = new Set(history?.map(h => h.vimeo_video_id) || [])
+  // 3. 今期の視聴済み本数を取得 (サブスク期間内)
+    let watchedCount = 0;
+    if (subscription) {
+      const { count } = await supabase
+        .from('viewing_history')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .gte('viewed_at', subscription.current_period_start)
+        .lte('viewed_at', subscription.current_period_end);
+      watchedCount = count || 0;
+    }
+
+    // 4. 合計キャパシティの計算 (基本枠 + チケット枠)
+    const planLimits: Record<string, number> = { light: 10, standard: 30, premium: 1000 };
+    const baseLimit = subscription ? (planLimits[subscription.plan_type] || 0) : 0;
+    const totalCapacity = baseLimit + totalTickets;
+
+    // ビデオデータ等の取得 (既存ロジック)
+    const { data: videos } = await supabase.from('videos').select('*')
+    const { data: history } = await supabase.from('viewing_history').select('vimeo_video_id').eq('user_id', user.id)
+    const viewedIds = new Set(history?.map(h => h.vimeo_video_id) || [])
 
   const { data: latestHistory } = await supabase
     .from('viewing_history').select('vimeo_video_id').eq('user_id', user.id)
@@ -121,20 +137,10 @@ export default async function DashboardPage({ params }: { params: Promise<{ lang
         {/* ヘッダー */}
         <div className="flex justify-between items-center mb-8 bg-white p-4 rounded-lg shadow-sm border border-gray-100">
           <h1 className="text-2xl font-bold text-gray-800">{dict.dashboard.title}</h1>
-          
           <div className="flex items-center gap-4">
             <LanguageSwitcher currentLang={lang} />
-            {isAdmin && (
-              <Link href={`/${lang}/admin`} className="px-4 py-2 text-sm font-bold text-white bg-red-500 rounded-md hover:bg-red-600 transition-colors shadow-sm hidden sm:block">
-                {dict.dashboard.adminButton}
-              </Link>
-            )}
-            {/* action属性をAPIのURLに変更し、method="POST"を追加します */}
             <form action="/api/auth/signout" method="POST">
-              <input type="hidden" name="lang" value={lang} />
-              <button className="px-4 py-2 text-sm text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200">
-                {dict.dashboard.logoutButton}
-              </button>
+              <button className="px-4 py-2 text-sm text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200">{dict.dashboard.logoutButton}</button>
             </form>
           </div>
         </div>
@@ -154,6 +160,25 @@ export default async function DashboardPage({ params }: { params: Promise<{ lang
                     {dict.dashboard.renewalDate}{new Date(subscription.current_period_end).toLocaleDateString(lang === 'ja' ? 'ja-JP' : 'en-US')}
                   </p>
                 </div>
+
+                {/* ★進捗インジケーターボックス */}
+                  <div className="bg-white/80 px-5 py-3 rounded-xl border border-blue-100 shadow-sm min-w-50">
+                    <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest mb-1">Annual Usage</p>
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-3xl font-black text-gray-900">{watchedCount}</span>
+                      <span className="text-sm font-bold text-gray-400">/ {subscription.plan_type === 'premium' ? '∞' : totalCapacity}</span>
+                      <span className="text-xs font-bold text-gray-500 ml-1">本</span>
+                    </div>
+                    {subscription.plan_type !== 'premium' && (
+                      <div className="w-full bg-gray-200 h-2 rounded-full mt-2 overflow-hidden">
+                        <div 
+                          className="bg-blue-600 h-full transition-all duration-500" 
+                          style={{ width: `${Math.min((watchedCount / totalCapacity) * 100, 100)}%` }}
+                        ></div>
+                      </div>
+                    )}
+                  </div>
+
                 {/* 修正後 */}
                 <form action="/api/portal" method="POST">
                   <input type="hidden" name="lang" value={lang} />
@@ -173,27 +198,20 @@ export default async function DashboardPage({ params }: { params: Promise<{ lang
 
             <div className="mt-6 pt-6 border-t border-blue-100 flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center text-xl">
-                  🎟️
-                </div>
+                <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center text-xl">🎟️</div>
                 <div>
                   <p className="text-sm font-bold text-blue-900">
-                    {/* 残り本数を辞書から引く/dashboard/page.tsx, ja.json] */}
-                    {dict.dashboard.remainingTickets.replace('{count}', totalTickets.toString())}
+                    有効な追加チケット: {totalTickets} 枚
                   </p>
-                  <p className="text-[10px] text-blue-600 font-medium">※有効期限は購入から1年間です</p>
+                  <p className="text-[10px] text-blue-600 font-medium">※合計100本までストック可能です</p>
                 </div>
               </div>
               
-              {/* 購入用フォーム：APIへPOSTリクエストを送る/dashboard/page.tsx, app/api/checkout/route.ts] */}
               <form action="/api/checkout" method="POST">
                 <input type="hidden" name="lang" value={lang} />
-                {/* .env.local で定義したチケット用Price ID */}
                 <input type="hidden" name="priceId" value={process.env.STRIPE_PRICE_ID_ADDON} />
-                <button 
-                  type="submit" 
-                  className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-extrabold rounded-lg shadow-md transition-all active:scale-95"
-                >
+                <input type="hidden" name="type" value="addon" /> {/* ★追加購入であることを明示 */}
+                <button type="submit" className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-extrabold rounded-lg shadow-md transition-all active:scale-95">
                   {dict.dashboard.buyTickets}
                 </button>
               </form>
