@@ -36,18 +36,20 @@ export async function middleware(request: NextRequest) {
     // データベースから最新のセッションIDを取得
     const { data: sub } = await supabase
       .from('subscriptions')
-      .select('plan_type, current_session_id')
+      .select(' current_session_id')
       .eq('user_id', session.user.id)
       .maybeSingle();
 
     // ライト・スタンダードプランのみ判定
-    if (sub?.plan_type === 'light' || sub?.plan_type === 'standard') {
-      const currentTokenId = session.access_token.slice(-20);
+    if (sub) {
+      // ★修正：アクセストークンではなく、端末にセットしたCookieのIDを確認
+      const currentTokenId = request.cookies.get('device_session_id')?.value;
       
-      // DBのIDと手元のトークンIDが一致しない＝別の端末で新しくログインされた
+      // DBのIDとCookieのIDが一致しない＝別の端末で新しくログインされた
       if (sub.current_session_id && sub.current_session_id !== currentTokenId) {
         // 強制ログアウト処理
         await supabase.auth.signOut();
+        response.cookies.delete('device_session_id'); // Cookieのお掃除
         const lang = pathname.startsWith('/en') ? 'en' : 'ja';
         const redirectUrl = new URL(`/${lang}/login?message=other_device`, request.url);
         return NextResponse.redirect(redirectUrl);

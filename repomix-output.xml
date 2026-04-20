@@ -1080,93 +1080,6 @@ export async function POST(request: Request) {
 }
 </file>
 
-<file path="app/api/record-view/route.ts">
-import { NextResponse } from 'next/server'
-import { createClient } from '@/utils/supabase/server'
-
-export const runtime = 'edge';
-
-export async function POST(req: Request) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  try {
-    const { videoId } = await req.json()
-
-    const { data: subscription } = await supabase
-      .from('subscriptions')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('status', 'active')
-      .single()
-
-    if (!subscription) return NextResponse.json({ error: 'No active plan' }, { status: 403 })
-
-    // ★ 修正：今月ではなく「今期の契約期間（1年間）」ですでに見たかチェック
-    const { data: alreadyViewed } = await supabase
-      .from('viewing_history')
-      .select('id')
-      .eq('user_id', user.id)
-      .eq('vimeo_video_id', videoId)
-      .gte('viewed_at', subscription.current_period_start) // 契約開始日（1年前）から
-      .lte('viewed_at', subscription.current_period_end)   // 契約終了日まで
-      .maybeSingle()
-
-    // すでにこの期間内に視聴済みなら、重複して記録しない
-    if (alreadyViewed)
-      return NextResponse.json({ success: true })
-
-    // 今期の総視聴本数をカウント（年間）
-    const { count } = await supabase
-      .from('viewing_history').select('*', { count: 'exact', head: true })
-      .eq('user_id', user.id)
-      .gte('viewed_at', subscription.current_period_start)
-      .lte('viewed_at', subscription.current_period_end)
-
-    const currentCount = count || 0
-    // 年契約に合わせた制限（例：ライトなら年120本など。必要に応じて数値を調整してください）
-    const planLimits: Record<string, number> = { light: 10, standard: 30, premium: 1000 }
-    const limit = planLimits[subscription.plan_type] || 0
-
-    if (currentCount >= limit) {
-      // チケット（買い足し枠）のチェックロジックはそのまま維持
-      const { data: credit } = await supabase
-        .from('video_credits')
-        .select('*')
-        .eq('user_id', user.id)
-        .gt('remaining', 0)
-        .gt('expires_at', new Date().toISOString())
-        .order('expires_at', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
-      if (credit) {
-        await supabase
-          .from('video_credits')
-          .update({ remaining: credit.remaining - 1 })
-          .eq('id', credit.id);
-      } else {
-        return NextResponse.json({ error: 'Yearly limit reached' }, { status: 403 })
-      }
-    }
-
-    // 新しく視聴履歴を挿入
-    await supabase.from('viewing_history').insert({
-      user_id: user.id,
-      vimeo_video_id: videoId
-    });
-
-    return NextResponse.json({ success: true })
-
-    } catch (error) {
-    // ★ ここで try を閉じ、catch ブロックを配置します
-    console.error('Record View Error:', error)
-    return NextResponse.json({ error: 'Server Error' }, { status: 500 })
-  }
-}
-</file>
-
 <file path="app/components/PasswordInput.tsx">
 'use client'
 
@@ -1208,286 +1121,6 @@ export default function PasswordInput({
       </button>
     </div>
   )
-}
-</file>
-
-<file path="dictionaries/en.json">
-{
-  "metadata": {
-    "title": "Nihongo Learning | Japanese Learning Platform",
-    "description": "Unlimited access to over 100 high-quality video lessons. Master Japanese at your own pace."
-  },
-  "home": {
-    "title": "Nihongo Learning",
-    "login": "Log in",
-    "startFree": "Start for Free",
-    "heroTitle1": "Master Japanese",
-    "heroTitle2": "at your own pace.",
-    "heroDescription": "Unlimited access to over 100 high-quality video lessons. Master everything from daily conversation to business Japanese with our structured curriculum.",
-    "startNow": "Start Learning Now",
-    "viewPricing": "View Pricing Plans",
-    "reasonsTitle": "3 Reasons to Choose Us",
-    "reasonsDesc": "We provide the optimal environment for learning Japanese efficiently.",
-    "feature1Title": "High-Quality Video Lessons",
-    "feature1Desc": "Easy-to-understand explanations by professional Japanese teachers. Watch them anytime, anywhere, as many times as you like.",
-    "feature2Title": "Track Your Progress",
-    "feature2Desc": "Visualize your learning achievement for each section with percentages. Keep your motivation high as you learn.",
-    "feature3Title": "Flexible Pricing Plans",
-    "feature3Desc": "We offer 3 plans to suit your learning pace, from a Light plan to an unlimited Premium plan.",
-    "pricingTitle": "Simple Pricing",
-    "pricingDesc": "Registration is free. Create an account first, then choose the plan that suits you.",
-    "planLight": "Light",
-    "planStandard": "Standard",
-    "planPremium": "Premium",
-    "perMonth": " / year",
-    "mostPopular": "Most Popular",
-    "lightFeature1": "Watch up to 10 videos per year",
-    "standardFeature1": "Watch up to 30 videos per year",
-    "premiumFeature1": "Unlimited video access",
-    "featureProgress": "Progress tracking",
-    "featureAllAccess": "Access to all sections",
-    "ctaTitle": "Let's open the door to a new language.",
-    "ctaDesc": "Account creation takes only 1 minute.",
-    "createFreeAccount": "Create a Free Account",
-    "footerRights": "Nihongo Learning. All rights reserved."
-  },
-  "auth": {
-    "loginTitle": "Log In",
-    "signupTitle": "Create an Account",
-    "emailLabel": "Email Address",
-    "emailPlaceholder": "you@example.com",
-    "passwordLabel": "Password",
-    "passwordPlaceholder": "••••••••",
-    "loginButton": "Log In",
-    "signupButton": "Sign Up",
-    "toSignupText": "Don't have an account?",
-    "toSignupLink": "Sign up here",
-    "toLoginText": "Already have an account?",
-    "toLoginLink": "Log in here",
-    "loginError": "Failed to log in. Please check your email and password.",
-    "signupError": "Failed to sign up.",
-    "signupSuccess": "A confirmation email has been sent. Please click the link in the email to complete registration.",
-    "showPassword": "Show",
-    "hidePassword": "Hide",
-    "forgotPassword": "Forgot your password?",
-    "resetPasswordTitle": "Reset Password",
-    "resetPasswordDesc": "Enter your registered email address. We will send you a link to reset your password.",
-    "sendResetLink": "Send Reset Link",
-    "resetLinkSent": "A password reset email has been sent. Please click the link in the email to reset your password.",
-    "updatePasswordTitle": "Set New Password",
-    "updatePasswordButton": "Update Password",
-    "updatePasswordSuccess": "Your password has been updated. Redirecting to the dashboard...",
-    "backToLogin": "Back to Login",
-    "newPasswordLabel": "New Password",
-    "rateLimitError": "Email sending limit reached. For security reasons, please wait a while before trying again.",
-    "generalError": "An error occurred. Please check your email address and try again."
-  },
-  "dashboard": {
-    "title": "Learning Dashboard",
-    "adminButton": "Admin Dashboard",
-    "logoutButton": "Log Out",
-    "welcome": "Welcome, ",
-    "honorific": "",
-    "subscriptionStatus": "Current Subscription Status",
-    "renewalDate": "Renewal Date: ",
-    "manageSubscription": "Manage Subscription",
-    "noSubscription": "No active subscription.",
-    "choosePlan": "Choose a Plan",
-    "planLight": "Light Plan (10 videos/mo)",
-    "planStandard": "Standard Plan (30 videos/mo)",
-    "planPremium": "Premium Plan (Unlimited)",
-    "planNone": "Unsubscribed",
-    "continueWatching": "Continue Watching",
-    "recentlyWatched": "Recently Watched",
-    "favorites": "Favorites",
-    "watch": "▶ Watch",
-    "courseList": "Course List",
-    "section": "Section ",
-    "videosCount": " videos",
-    "progress": "Progress: ",
-    "completed": " Completed",
-    "remainingTickets": "Extra Tickets: {count} remaining",
-    "buyTickets": "Buy 10 Extra Video Tickets ($15.00)"
-  },
-  "section": {
-    "backToDashboard": "← Back to Dashboard",
-    "title": "Videos for Section {id}",
-    "viewed": "✓ Viewed",
-    "watchAgain": "Watch Again",
-    "watch": "Watch"
-  },
-  "video": {
-    "requireSubscription": "A subscription plan is required to watch videos.",
-    "toPricing": "Go to Pricing",
-    "limitReachedTitle": "Yearly viewing limit reached ({limit} videos)",
-    "limitMessage": "To watch more videos, please wait for next year's renewal or consider upgrading your plan or purchases additional Tickets.",
-    "backToDashboard": "← Back to Dashboard",
-    "playerTitle": "Video Player",
-    "currentPlan": "Current Plan",
-    "yearlyWatchCount": "Yearly Videos Watched",
-    "unlimited": "Unlimited",
-    "videosUnit": " videos",
-    "favoriteAdd": "Add to Favorites",
-    "favoriteRemove": "Remove Favorite",
-    "watchCompleted": "✓ Completed"
-  },
-  "pricing": {
-    "title": "Choose a Learning Plan",
-    "subtitle": "Select the plan that best fits your learning pace.",
-    "noticeTitle": "Notice",
-    "noticeMessage": "You are already subscribed to a plan. If you wish to cancel or change your current plan, please contact the administrator.",
-    "planLight": "Light Plan",
-    "planStandard": "Standard Plan",
-    "planPremium": "Premium Plan",
-    "priceLight": "$10.00",
-    "priceStandard": "$30.00",
-    "pricePremium": "$50.00",
-    "perMonth": "/year",
-    "subscribed": "Subscribed",
-    "selectPlan": "Select Plan",
-    "alreadySubscribedError": "You are already subscribed to a plan. Additional purchases are not allowed."
-  }
-}
-</file>
-
-<file path="dictionaries/ja.json">
-{
-  "metadata": {
-    "title": "Nihongo Learning | 外国人のための日本語学習",
-    "description": "100本以上の高品質な授業動画が見放題。あなたのペースで確実な日本語力を身につけましょう。"
-  },
-  "home": {
-    "title": "Nihongo Learning",
-    "login": "ログイン",
-    "startFree": "無料ではじめる",
-    "heroTitle1": "あなたのペースで、",
-    "heroTitle2": "確実な日本語力を。",
-    "heroDescription": "100本以上の高品質な授業動画が見放題。体系化されたカリキュラムで、日常会話からビジネス日本語まで、最短ルートでマスターしましょう。",
-    "startNow": "今すぐ学習をスタート",
-    "viewPricing": "料金プランを見る",
-    "reasonsTitle": "選ばれる3つの理由",
-    "reasonsDesc": "効率的に日本語を習得するための、最適な環境が整っています。",
-    "feature1Title": "圧倒的な質の授業動画",
-    "feature1Desc": "プロの日本語教師による、わかりやすい解説動画。いつでもどこでも、何度でも見返すことができます。",
-    "feature2Title": "進捗がひと目でわかる",
-    "feature2Desc": "セクションごとの学習達成度をパーセンテージで可視化。モチベーションを維持しながら学習を進められます。",
-    "feature3Title": "選べる柔軟な料金プラン",
-    "feature3Desc": "あなたの学習ペースに合わせて、ライトから無制限のプレミアムまで、3つのプランをご用意しています。",
-    "pricingTitle": "シンプルな料金体系",
-    "pricingDesc": "登録は無料です。まずはアカウントを作成し、あなたに合ったプランをお選びください。",
-    "planLight": "ライト",
-    "planStandard": "スタンダード",
-    "planPremium": "プレミアム",
-    "perMonth": " / 年",
-    "mostPopular": "一番人気",
-    "lightFeature1": "年間 10本まで視聴可能",
-    "standardFeature1": "年間 30本まで視聴可能",
-    "premiumFeature1": "動画視聴 無制限",
-    "featureProgress": "進捗管理機能",
-    "featureAllAccess": "全セクションへのアクセス",
-    "ctaTitle": "さあ、新しい言語の扉を開きましょう。",
-    "ctaDesc": "アカウント作成はわずか1分で完了します。",
-    "createFreeAccount": "無料でアカウントを作成する",
-    "footerRights": "Nihongo Learning. All rights reserved."
-  },
-  "auth": {
-    "loginTitle": "ログイン",
-    "signupTitle": "新規アカウント登録",
-    "emailLabel": "メールアドレス",
-    "emailPlaceholder": "you@example.com",
-    "passwordLabel": "パスワード",
-    "passwordPlaceholder": "••••••••",
-    "loginButton": "ログイン",
-    "signupButton": "登録する",
-    "toSignupText": "アカウントをお持ちでないですか？",
-    "toSignupLink": "新規登録はこちら",
-    "toLoginText": "すでにアカウントをお持ちですか？",
-    "toLoginLink": "ログインはこちら",
-    "loginError": "ログインに失敗しました。メールアドレスとパスワードをご確認ください。",
-    "signupError": "登録に失敗しました。",
-    "signupSuccess": "確認メールを送信しました。メール内のリンクをクリックして登録を完了してください。",
-    "showPassword": "表示",
-    "hidePassword": "隠す",
-    "forgotPassword": "パスワードをお忘れですか？",
-    "resetPasswordTitle": "パスワードの再設定",
-    "resetPasswordDesc": "登録したメールアドレスを入力してください。再設定用のリンクを送信します。",
-    "sendResetLink": "再設定リンクを送信する",
-    "resetLinkSent": "再設定用のメールを送信しました。メール内のリンクからパスワードを再設定してください。",
-    "updatePasswordTitle": "新しいパスワードの設定",
-    "updatePasswordButton": "パスワードを更新する",
-    "updatePasswordSuccess": "パスワードが更新されました。ダッシュボードへ移動します。",
-    "backToLogin": "ログイン画面に戻る",
-    "newPasswordLabel": "新しいパスワード",
-    "rateLimitError": "メール送信の上限に達しました。セキュリティのため、しばらく時間をおいてから再度お試しください。",
-    "generalError": "エラーが発生しました。メールアドレスをご確認の上、もう一度お試しください。"
-  },
-  "dashboard": {
-    "title": "学習ダッシュボード",
-    "adminButton": "管理画面へ",
-    "logoutButton": "ログアウト",
-    "welcome": "ようこそ、",
-    "honorific": " さん",
-    "subscriptionStatus": "現在のご契約状況",
-    "renewalDate": "更新日: ",
-    "manageSubscription": "契約内容の確認・変更",
-    "noSubscription": "プラン未契約です。",
-    "choosePlan": "プランを選択する",
-    "planLight": "ライトプラン（年10本）",
-    "planStandard": "スタンダードプラン（年30本）",
-    "planPremium": "プレミアムプラン（無制限）",
-    "planNone": "未契約",
-    "continueWatching": "続きから見る",
-    "recentlyWatched": "最近視聴",
-    "favorites": "お気に入り",
-    "watch": "▶ 視聴",
-    "courseList": "学習コース一覧",
-    "section": "セクション ",
-    "videosCount": " 本",
-    "progress": "進捗: ",
-    "completed": " 完了",
-    "remainingTickets": "追加視聴枠：残り {count} 本",
-    "buyTickets": "動画視聴枠を 10本購入する "
-  },
-  "section": {
-    "backToDashboard": "← ダッシュボードへ戻る",
-    "title": "セクション {id} の動画一覧",
-    "viewed": "✓ 視聴済み",
-    "watchAgain": "もう一度見る",
-    "watch": "視聴する"
-  },
-  "video": {
-    "requireSubscription": "動画を視聴するにはプランの契約が必要です。",
-    "toPricing": "プラン選択画面へ",
-    "limitReachedTitle": "今年の視聴上限（{limit}本）に達しました",
-    "limitMessage": "新しい動画を視聴するには、来月の更新をお待ちいただくか、プランの変更をご検討ください。",
-    "backToDashboard": "← ダッシュボードに戻る",
-    "playerTitle": "授業動画再生",
-    "currentPlan": "現在のプラン",
-    "yearlyWatchCount": "今年の視聴本数",
-    "unlimited": "無制限",
-    "videosUnit": " 本",
-    "favoriteAdd": "お気に入りに追加",
-    "favoriteRemove": "お気に入り解除",
-    "watchCompleted": "✓ 視聴完了",
-    "useTicket": "追加チケットを1枚使って視聴する",
-    "noTickets": "視聴枠がありません。チケットを購入してください。"
-  },
-  "pricing": {
-    "title": "学習プランを選択",
-    "subtitle": "あなたの学習ペースに合わせたプランをお選びください。",
-    "noticeTitle": "お知らせ",
-    "noticeMessage": "お客様はすでにプランをご契約中です。現在のプランの解約や変更をご希望の場合は、管理者までお問い合わせください。",
-    "planLight": "ライトプラン",
-    "planStandard": "スタンダードプラン",
-    "planPremium": "プレミアムプラン",
-    "priceLight": "¥100,000",
-    "priceStandard": "¥500,000",
-    "pricePremium": "¥1,000,000",
-    "perMonth": "/年",
-    "subscribed": "契約済み",
-    "selectPlan": "プランを選択",
-    "alreadySubscribedError": "すでにプランを契約中のため、追加購入はできません"
-  }
 }
 </file>
 
@@ -1621,6 +1254,396 @@ next-env.d.ts
 stripe.exe
 </file>
 
+<file path="app/api/record-view/route.ts">
+import { NextResponse } from 'next/server'
+import { createClient } from '@/utils/supabase/server'
+
+export const runtime = 'edge';
+
+export async function POST(req: Request) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  try {
+    const { videoId } = await req.json()
+
+    const { data: subscription } = await supabase
+      .from('subscriptions')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('status', 'active')
+      .single()
+
+    if (!subscription) return NextResponse.json({ error: 'No active plan' }, { status: 403 })
+
+    // ★ 修正：今月ではなく「今期の契約期間（1年間）」ですでに見たかチェック
+    const { data: alreadyViewed } = await supabase
+      .from('viewing_history')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('vimeo_video_id', videoId)
+      .gte('viewed_at', subscription.current_period_start) // 契約開始日（1年前）から
+      .lte('viewed_at', subscription.current_period_end)   // 契約終了日まで
+      .maybeSingle()
+
+    // すでにこの期間内に視聴済みなら、重複して記録しない
+    if (alreadyViewed)
+      return NextResponse.json({ success: true })
+
+    // 今期の総視聴本数をカウント（年間）
+    const { count } = await supabase
+      .from('viewing_history').select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .gte('viewed_at', subscription.current_period_start)
+      .lte('viewed_at', subscription.current_period_end)
+
+    const currentCount = count || 0
+    // 年契約に合わせた制限（例：ライトなら年120本など。必要に応じて数値を調整してください）
+    // プランによる分岐を削除し、上限を25本で固定します
+    const limit = 25;
+
+    if (currentCount >= limit) {
+      // チケット（買い足し枠）のチェックロジックはそのまま維持
+      const { data: credit } = await supabase
+        .from('video_credits')
+        .select('*')
+        .eq('user_id', user.id)
+        .gt('remaining', 0)
+        .gt('expires_at', new Date().toISOString())
+        .order('expires_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (credit) {
+        await supabase
+          .from('video_credits')
+          .update({ remaining: credit.remaining - 1 })
+          .eq('id', credit.id);
+      } else {
+        return NextResponse.json({ error: 'Yearly limit reached' }, { status: 403 })
+      }
+    }
+
+    // 新しく視聴履歴を挿入
+    await supabase.from('viewing_history').insert({
+      user_id: user.id,
+      vimeo_video_id: videoId
+    });
+
+    return NextResponse.json({ success: true })
+
+    } catch (error) {
+    // ★ ここで try を閉じ、catch ブロックを配置します
+    console.error('Record View Error:', error)
+    return NextResponse.json({ error: 'Server Error' }, { status: 500 })
+  }
+}
+</file>
+
+<file path="dictionaries/en.json">
+{
+  "metadata": {
+    "title": "Nihongo Learning | Japanese Learning Platform",
+    "description": "Unlimited access to over 100 high-quality video lessons. Master Japanese at your own pace."
+  },
+  "home": {
+    "title": "Nihongo Learning",
+    "login": "Log in",
+    "startFree": "Start for Free",
+    "heroTitle1": "Master Japanese",
+    "heroTitle2": "at your own pace.",
+    "heroDescription": "Unlimited access to over 100 high-quality video lessons. Master everything from daily conversation to business Japanese with our structured curriculum.",
+    "startNow": "Start Learning Now",
+    "viewPricing": "View Pricing Plans",
+    "reasonsTitle": "3 Reasons to Choose Us",
+    "reasonsDesc": "We provide the optimal environment for learning Japanese efficiently.",
+    "feature1Title": "High-Quality Video Lessons",
+    "feature1Desc": "Easy-to-understand explanations by professional Japanese teachers. Watch them anytime, anywhere, as many times as you like.",
+    "feature2Title": "Track Your Progress",
+    "feature2Desc": "Visualize your learning achievement for each section with percentages. Keep your motivation high as you learn.",
+    "feature3Title": "Flexible Pricing Plans",
+    "feature3Desc": "We offer 3 plans to suit your learning pace, from a Light plan to an unlimited Premium plan.",
+    "pricingTitle": "Simple Pricing",
+    "pricingDesc": "Registration is free. Create an account first, then choose the plan that suits you.",
+    "planLight": "Light",
+    "planStandard": "Standard",
+    "planPremium": "Premium",
+    "perMonth": " / month",
+    "mostPopular": "Most Popular",
+    "standardFeature1": "Watch up to 25 videos per month",
+    "featureProgress": "Progress tracking",
+    "featureAllAccess": "Access to all sections",
+    "ctaTitle": "Let's open the door to a new language.",
+    "ctaDesc": "Account creation takes only 1 minute.",
+    "createFreeAccount": "Create a Free Account",
+    "footerRights": "Nihongo Learning. All rights reserved."
+  },
+  "auth": {
+    "loginTitle": "Log In",
+    "signupTitle": "Create an Account",
+    "emailLabel": "Email Address",
+    "emailPlaceholder": "you@example.com",
+    "passwordLabel": "Password",
+    "passwordPlaceholder": "••••••••",
+    "loginButton": "Log In",
+    "signupButton": "Sign Up",
+    "toSignupText": "Don't have an account?",
+    "toSignupLink": "Sign up here",
+    "toLoginText": "Already have an account?",
+    "toLoginLink": "Log in here",
+    "loginError": "Failed to log in. Please check your email and password.",
+    "signupError": "Failed to sign up.",
+    "signupSuccess": "A confirmation email has been sent. Please click the link in the email to complete registration.",
+    "showPassword": "Show",
+    "hidePassword": "Hide",
+    "forgotPassword": "Forgot your password?",
+    "resetPasswordTitle": "Reset Password",
+    "resetPasswordDesc": "Enter your registered email address. We will send you a link to reset your password.",
+    "sendResetLink": "Send Reset Link",
+    "resetLinkSent": "A password reset email has been sent. Please click the link in the email to reset your password.",
+    "updatePasswordTitle": "Set New Password",
+    "updatePasswordButton": "Update Password",
+    "updatePasswordSuccess": "Your password has been updated. Redirecting to the dashboard...",
+    "backToLogin": "Back to Login",
+    "newPasswordLabel": "New Password",
+    "rateLimitError": "Email sending limit reached. For security reasons, please wait a while before trying again.",
+    "generalError": "An error occurred. Please check your email address and try again."
+  },
+  "dashboard": {
+    "title": "Learning Dashboard",
+    "adminButton": "Admin Dashboard",
+    "logoutButton": "Log Out",
+    "welcome": "Welcome, ",
+    "honorific": "",
+    "subscriptionStatus": "Current Subscription Status",
+    "renewalDate": "Renewal Date: ",
+    "manageSubscription": "Manage Subscription",
+    "noSubscription": "No active subscription.",
+    "choosePlan": "Choose a Plan",
+    "planStandard": "Basic Plan (25 videos/mo)",
+    "planNone": "Unsubscribed",
+    "continueWatching": "Continue Watching",
+    "recentlyWatched": "Recently Watched",
+    "favorites": "Favorites",
+    "watch": "▶ Watch",
+    "courseList": "Course List",
+    "section": "Section ",
+    "videosCount": " videos",
+    "progress": "Progress: ",
+    "completed": " Completed",
+    "remainingTickets": "Extra Tickets: {count} remaining",
+    "buyTickets": "Buy 25 Extra Video Tickets ($35.00)",
+    "validTickets": "Valid Extra Tickets: {count}",
+    "ticketStockLimit": "* Maximum stock is 100 tickets."
+  },
+  "section": {
+    "backToDashboard": "← Back to Dashboard",
+    "title": "Videos for Section {id}",
+    "viewed": "✓ Viewed",
+    "watchAgain": "Watch Again",
+    "watch": "Watch"
+  },
+  "video": {
+    "requireSubscription": "A subscription plan is required to watch videos.",
+    "toPricing": "Go to Pricing",
+    "limitReachedTitle": "Monthly viewing limit reached ({limit} videos)",
+    "limitMessage": "To watch more videos, please wait for next year's renewal or consider upgrading your plan or purchases additional Tickets.",
+    "backToDashboard": "← Back to Dashboard",
+    "playerTitle": "Video Player",
+    "currentPlan": "Current Plan",
+    "yearlyWatchCount": "Monthly Videos Watched",
+    "unlimited": "Unlimited",
+    "videosUnit": " videos",
+    "favoriteAdd": "Add to Favorites",
+    "favoriteRemove": "Remove Favorite",
+    "watchCompleted": "✓ Completed"
+  },
+  "pricing": {
+    "title": "Choose a Learning Plan",
+    "subtitle": "Select the plan that best fits your learning pace.",
+    "noticeTitle": "Notice",
+    "noticeMessage": "You are already subscribed to a plan. If you wish to cancel or change your current plan, please contact the administrator.",
+    "planStandard": "Standard Plan",
+    "priceStandard": "$35.00",
+    "perMonth": "/month",
+    "subscribed": "Subscribed",
+    "selectPlan": "Select Plan",
+    "alreadySubscribedError": "You are already subscribed to a plan. Additional purchases are not allowed."
+  }
+}
+</file>
+
+<file path="dictionaries/ja.json">
+{
+  "metadata": {
+    "title": "Nihongo Learning | 外国人のための日本語学習",
+    "description": "100本以上の高品質な授業動画が見放題。あなたのペースで確実な日本語力を身につけましょう。"
+  },
+  "home": {
+    "title": "Nihongo Learning",
+    "login": "ログイン",
+    "startFree": "無料ではじめる",
+    "heroTitle1": "あなたのペースで、",
+    "heroTitle2": "確実な日本語力を。",
+    "heroDescription": "100本以上の高品質な授業動画が見放題。体系化されたカリキュラムで、日常会話からビジネス日本語まで、最短ルートでマスターしましょう。",
+    "startNow": "今すぐ学習をスタート",
+    "viewPricing": "料金プランを見る",
+    "reasonsTitle": "選ばれる3つの理由",
+    "reasonsDesc": "効率的に日本語を習得するための、最適な環境が整っています。",
+    "feature1Title": "圧倒的な質の授業動画",
+    "feature1Desc": "プロの日本語教師による、わかりやすい解説動画。いつでもどこでも、何度でも見返すことができます。",
+    "feature2Title": "進捗がひと目でわかる",
+    "feature2Desc": "セクションごとの学習達成度をパーセンテージで可視化。モチベーションを維持しながら学習を進められます。",
+    "feature3Title": "選べる柔軟な料金プラン",
+    "feature3Desc": "あなたの学習ペースに合わせて、ライトから無制限のプレミアムまで、3つのプランをご用意しています。",
+    "pricingTitle": "シンプルな料金体系",
+    "pricingDesc": "登録は無料です。まずはアカウントを作成し、あなたに合ったプランをお選びください。",
+    "planLight": "ライト",
+    "planStandard": "スタンダード",
+    "planPremium": "プレミアム",
+    "perMonth": " / 月",
+    "mostPopular": "一番人気",
+    "featureProgress": "進捗管理機能",
+    "featureAllAccess": "全セクションへのアクセス",
+    "ctaTitle": "さあ、新しい言語の扉を開きましょう。",
+    "ctaDesc": "アカウント作成はわずか1分で完了します。",
+    "createFreeAccount": "無料でアカウントを作成する",
+    "footerRights": "Nihongo Learning. All rights reserved."
+  },
+  "auth": {
+    "loginTitle": "ログイン",
+    "signupTitle": "新規アカウント登録",
+    "emailLabel": "メールアドレス",
+    "emailPlaceholder": "you@example.com",
+    "passwordLabel": "パスワード",
+    "passwordPlaceholder": "••••••••",
+    "loginButton": "ログイン",
+    "signupButton": "登録する",
+    "toSignupText": "アカウントをお持ちでないですか？",
+    "toSignupLink": "新規登録はこちら",
+    "toLoginText": "すでにアカウントをお持ちですか？",
+    "toLoginLink": "ログインはこちら",
+    "loginError": "ログインに失敗しました。メールアドレスとパスワードをご確認ください。",
+    "signupError": "登録に失敗しました。",
+    "signupSuccess": "確認メールを送信しました。メール内のリンクをクリックして登録を完了してください。",
+    "showPassword": "表示",
+    "hidePassword": "隠す",
+    "forgotPassword": "パスワードをお忘れですか？",
+    "resetPasswordTitle": "パスワードの再設定",
+    "resetPasswordDesc": "登録したメールアドレスを入力してください。再設定用のリンクを送信します。",
+    "sendResetLink": "再設定リンクを送信する",
+    "resetLinkSent": "再設定用のメールを送信しました。メール内のリンクからパスワードを再設定してください。",
+    "updatePasswordTitle": "新しいパスワードの設定",
+    "updatePasswordButton": "パスワードを更新する",
+    "updatePasswordSuccess": "パスワードが更新されました。ダッシュボードへ移動します。",
+    "backToLogin": "ログイン画面に戻る",
+    "newPasswordLabel": "新しいパスワード",
+    "rateLimitError": "メール送信の上限に達しました。セキュリティのため、しばらく時間をおいてから再度お試しください。",
+    "generalError": "エラーが発生しました。メールアドレスをご確認の上、もう一度お試しください。"
+  },
+  "dashboard": {
+    "title": "学習ダッシュボード",
+    "adminButton": "管理画面へ",
+    "logoutButton": "ログアウト",
+    "welcome": "ようこそ、",
+    "honorific": " さん",
+    "subscriptionStatus": "現在のご契約状況",
+    "renewalDate": "更新日: ",
+    "manageSubscription": "契約内容の確認・変更",
+    "noSubscription": "プラン未契約です。",
+    "choosePlan": "プランを選択する",
+    "planStandard": "基本プラン（月25本）",
+    "planNone": "未契約",
+    "continueWatching": "続きから見る",
+    "recentlyWatched": "最近視聴",
+    "favorites": "お気に入り",
+    "watch": "▶ 視聴",
+    "courseList": "学習コース一覧",
+    "section": "セクション ",
+    "videosCount": " 本",
+    "progress": "進捗: ",
+    "completed": " 完了",
+    "remainingTickets": "追加視聴枠：残り {count} 本",
+    "buyTickets": "動画視聴枠を 25本購入する ($35) ",
+    "validTickets": "有効な追加チケット: {count} 枚",
+    "ticketStockLimit": "※合計100本までストック可能です"
+  },
+  "section": {
+    "backToDashboard": "← ダッシュボードへ戻る",
+    "title": "セクション {id} の動画一覧",
+    "viewed": "✓ 視聴済み",
+    "watchAgain": "もう一度見る",
+    "watch": "視聴する"
+  },
+  "video": {
+    "requireSubscription": "動画を視聴するにはプランの契約が必要です。",
+    "toPricing": "プラン選択画面へ",
+    "limitReachedTitle": "今月の視聴上限（{limit}本）に達しました",
+    "limitMessage": "新しい動画を視聴するには、来月の更新をお待ちいただくか、プランの変更をご検討ください。",
+    "backToDashboard": "← ダッシュボードに戻る",
+    "playerTitle": "授業動画再生",
+    "currentPlan": "現在のプラン",
+    "yearlyWatchCount": "今月の視聴本数",
+    "videosUnit": " 本",
+    "favoriteAdd": "お気に入りに追加",
+    "favoriteRemove": "お気に入り解除",
+    "watchCompleted": "✓ 視聴完了",
+    "useTicket": "追加チケットを1枚使って視聴する",
+    "noTickets": "視聴枠がありません。チケットを購入してください。"
+  },
+  "pricing": {
+    "title": "学習プランを選択",
+    "subtitle": "あなたの学習ペースに合わせたプランをお選びください。",
+    "noticeTitle": "お知らせ",
+    "noticeMessage": "お客様はすでにプランをご契約中です。現在のプランの解約や変更をご希望の場合は、管理者までお問い合わせください。",
+    "planStandard": "スタンダードプラン",
+    "priceStandard": "$35.00",
+    "perMonth": "/月",
+    "subscribed": "契約済み",
+    "selectPlan": "プランを選択",
+    "alreadySubscribedError": "すでにプランを契約中のため、追加購入はできません"
+  }
+}
+</file>
+
+<file path="eslint.config.mjs">
+import { defineConfig, globalIgnores } from "eslint/config";
+import nextVitals from "eslint-config-next/core-web-vitals.js";
+import nextTs from "eslint-config-next/typescript.js";
+
+const eslintConfig = defineConfig([
+  ...nextVitals,
+  ...nextTs,
+  // Override default ignores of eslint-config-next.
+  globalIgnores([
+    // Default ignores of eslint-config-next:
+    ".next/**",
+    "out/**",
+    "build/**",
+    "next-env.d.ts",
+  ]),
+]);
+
+export default eslintConfig;
+</file>
+
+<file path="next.config.ts">
+// next.config.ts
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  serverActions: {
+    allowedOrigins: [
+      'easy-japanese.shizuoka-connect.com',
+      'https://easy-japanese.shizuoka-connect.com' // ★プロトコル付きを追加
+    ]
+  }
+};
+
+export default nextConfig;
+</file>
+
 <file path="app/[lang]/page.tsx">
 import Link from 'next/link'
 import { getDictionary } from '@/utils/get-dictionary'
@@ -1743,37 +1766,14 @@ export default async function HomePage({ params }: { params: Promise<{ lang: 'ja
               <p className="text-gray-600">{dict.home.pricingDesc}</p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-              {/* プラン1 */}
-              <div className="bg-white rounded-2xl p-8 border border-gray-200 shadow-sm text-center">
-                <h3 className="text-lg font-medium text-gray-500 mb-2">{dict.home.planLight}</h3>
-                <p className="text-4xl font-extrabold text-gray-900 mb-6">¥100,000<span className="text-base font-normal text-gray-500">{dict.home.perMonth}</span></p>
-                <ul className="text-left space-y-3 mb-8 text-gray-600">
-                  <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> {dict.home.lightFeature1}</li>
-                  <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> {dict.home.featureProgress}</li>
-                </ul>
-              </div>
-              
-              {/* プラン2（おすすめ） */}
-              <div className="bg-white rounded-2xl p-8 border-2 border-blue-500 shadow-xl text-center relative transform md:-translate-y-4">
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-blue-500 text-white px-4 py-1 rounded-full text-sm font-bold tracking-wide">{dict.home.mostPopular}</div>
-                <h3 className="text-lg font-medium text-blue-600 mb-2">{dict.home.planStandard}</h3>
-                <p className="text-4xl font-extrabold text-gray-900 mb-6">¥500,000<span className="text-base font-normal text-gray-500">{dict.home.perMonth}</span></p>
-                <ul className="text-left space-y-3 mb-8 text-gray-600">
-                  <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> {dict.home.standardFeature1}</li>
-                  <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> {dict.home.featureProgress}</li>
-                  <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> {dict.home.featureAllAccess}</li>
-                </ul>
-              </div>
-
-              {/* プラン3 */}
-              <div className="bg-gray-900 rounded-2xl p-8 border border-gray-800 shadow-sm text-center text-white">
-                <h3 className="text-lg font-medium text-gray-400 mb-2">{dict.home.planPremium}</h3>
-                <p className="text-4xl font-extrabold text-white mb-6">¥1,000,000<span className="text-base font-normal text-gray-400">{dict.home.perMonth}</span></p>
-                <ul className="text-left space-y-3 mb-8 text-gray-300">
-                  <li className="flex items-center"><span className="text-blue-400 mr-2">✓</span> {dict.home.premiumFeature1}</li>
-                  <li className="flex items-center"><span className="text-blue-400 mr-2">✓</span> {dict.home.featureProgress}</li>
-                  <li className="flex items-center"><span className="text-blue-400 mr-2">✓</span> {dict.home.featureAllAccess}</li>
+            {/* グリッドを1カラムに変更し、中央に配置 */}
+            <div className="max-w-md mx-auto">
+              <div className="bg-white rounded-2xl p-8 border-2 border-blue-500 shadow-xl text-center relative">
+                <h3 className="text-xl font-bold text-blue-600 mb-2">{dict.home.planStandard}</h3>
+                <p className="text-5xl font-extrabold text-gray-900 mb-6">$35.00<span className="text-base font-normal text-gray-500">{dict.home.perMonth}</span></p>
+                <ul className="text-left space-y-4 mb-8 text-gray-600 font-medium">
+                  <li className="flex items-center"><span className="text-green-500 mr-3 text-xl">✓</span> {dict.home.featureProgress}</li>
+                  <li className="flex items-center"><span className="text-green-500 mr-3 text-xl">✓</span> {dict.home.featureAllAccess}</li>
                 </ul>
               </div>
             </div>
@@ -1856,9 +1856,7 @@ export default async function VideoPage({
     )
   }
 
-  const planLimits: Record<string, number> = { light: 10, standard: 30, premium: 9999999 }
-  const limit = planLimits[subscription.plan_type] || 0
-
+  const limit = 25;
   const { count } = await supabase
     .from('viewing_history').select('*', { count: 'exact', head: true })
     .eq('user_id', user.id)
@@ -1970,7 +1968,7 @@ export default async function VideoPage({
           <div className="text-center border-t sm:border-t-0 sm:border-x border-gray-100 py-4 sm:py-0">
             <p className="text-sm text-gray-500 mb-1">{dict.video.yearlyWatchCount}</p>
             <p className="text-lg font-semibold text-gray-800">
-              {currentCount} <span className="text-sm font-normal text-gray-500">/ {subscription.plan_type === 'premium' ? dict.video.unlimited : `${limit}${dict.video.videosUnit}`}</span>
+              {currentCount} <span className="text-sm font-normal text-gray-500">/ {limit}{dict.video.videosUnit}</span>
             </p>
           </div>
           <div className="text-right">
@@ -2029,8 +2027,7 @@ export async function POST(request: Request) {
 
       // 2. 有効な追加チケットの残数を合計
       if (isAddOn && subscription) {
-      const planLimits: Record<string, number> = { light: 10, standard: 30, premium: 1000 };
-      const baseLimit = planLimits[subscription.plan_type] || 0;
+      const baseLimit = 25;
 
       // 有効なチケットの残数を取得
       const { data: credits } = await supabase
@@ -2080,173 +2077,6 @@ export async function POST(request: Request) {
     console.error('Checkout Error:', error)
     return NextResponse.redirect(new URL(`/${currentLang}/pricing?error=true`, request.url), 303)
   }
-}
-</file>
-
-<file path="eslint.config.mjs">
-import { defineConfig, globalIgnores } from "eslint/config";
-import nextVitals from "eslint-config-next/core-web-vitals.js";
-import nextTs from "eslint-config-next/typescript.js";
-
-const eslintConfig = defineConfig([
-  ...nextVitals,
-  ...nextTs,
-  // Override default ignores of eslint-config-next.
-  globalIgnores([
-    // Default ignores of eslint-config-next:
-    ".next/**",
-    "out/**",
-    "build/**",
-    "next-env.d.ts",
-  ]),
-]);
-
-export default eslintConfig;
-</file>
-
-<file path="next.config.ts">
-// next.config.ts
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
-  serverActions: {
-    allowedOrigins: [
-      'easy-japanese.shizuoka-connect.com',
-      'https://easy-japanese.shizuoka-connect.com' // ★プロトコル付きを追加
-    ]
-  }
-};
-
-export default nextConfig;
-</file>
-
-<file path="app/[lang]/pricing/page.tsx">
-import { createClient } from '@/utils/supabase/server'
-import { redirect } from 'next/navigation'
-import { getDictionary } from '@/utils/get-dictionary'
-import LanguageSwitcher from '@/app/components/LanguageSwitcher'
-
-export const runtime = 'edge';
-
-export default async function PricingPage({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }) {
-  const { lang } = await params
-  const dict = await getDictionary(lang)
-
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect(`/${lang}/login`)
-  }
-
-  const { data: existingSubscription } = await supabase
-    .from('subscriptions').select('*').eq('user_id', user.id).eq('status', 'active').limit(1).maybeSingle()
-
-  const getPriceId = (plan: 'light' | 'standard' | 'premium', currentLang: string) => {
-    if (plan === 'light') return process.env.STRIPE_PRICE_ID_LIGHT;
-    if (plan === 'standard') return process.env.STRIPE_PRICE_ID_STANDARD;
-    if (plan === 'premium') return process.env.STRIPE_PRICE_ID_PREMIUM;
-  }
-
-  const isSubscribed = !!existingSubscription
-
-  return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8 relative">
-      <div className="absolute top-6 right-6">
-        <LanguageSwitcher currentLang={lang} />
-      </div>
-
-      <div className="max-w-7xl mx-auto mt-8">
-        <div className="text-center">
-          <h2 className="text-3xl font-extrabold text-gray-900 sm:text-4xl">{dict.pricing.title}</h2>
-          <p className="mt-4 text-xl text-gray-600">{dict.pricing.subtitle}</p>
-        </div>
-
-        {isSubscribed && (
-          <div className="mt-8 max-w-3xl mx-auto bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 rounded shadow-sm">
-            <p className="font-bold">{dict.pricing.noticeTitle}</p>
-            <p>{dict.pricing.noticeMessage}</p>
-          </div>
-        )}
-
-        <div className="mt-12 space-y-4 sm:space-y-0 sm:grid sm:grid-cols-3 sm:gap-6 lg:max-w-4xl lg:mx-auto xl:max-w-none xl:mx-0 xl:grid-cols-3">
-          
-          {/* ライトプラン */}
-          <div className="border border-gray-200 rounded-lg shadow-sm divide-y divide-gray-200 bg-white">
-            <div className="p-6">
-              <h3 className="text-lg leading-6 font-medium text-gray-900">{dict.pricing.planLight}</h3>
-              <p className="mt-8">
-                <span className="text-4xl font-extrabold text-gray-900">{dict.pricing.priceLight}</span>
-                <span className="text-base font-medium text-gray-500">{dict.pricing.perMonth}</span>
-              </p>
-              <form action="/api/checkout" method="POST" className="mt-8">
-                <input type="hidden" name="lang" value={lang} />
-                <input type="hidden" name="priceId" value={getPriceId('light', lang) || ''} />
-                <button 
-                  type="submit" 
-                  disabled={isSubscribed}
-                  className={`w-full text-white rounded-md py-2 text-sm font-semibold transition-colors ${
-                    isSubscribed ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
-                  }`}
-                >
-                  {isSubscribed ? dict.pricing.subscribed : dict.pricing.selectPlan}
-                </button>
-              </form>
-            </div>
-          </div>
-
-          {/* スタンダードプラン */}
-          <div className="border border-blue-500 rounded-lg shadow-md divide-y divide-gray-200 bg-white relative">
-            <div className="p-6">
-              <h3 className="text-lg leading-6 font-medium text-gray-900">{dict.pricing.planStandard}</h3>
-              <p className="mt-8">
-                <span className="text-4xl font-extrabold text-gray-900">{dict.pricing.priceStandard}</span>
-                <span className="text-base font-medium text-gray-500">{dict.pricing.perMonth}</span>
-              </p>
-              <form action="/api/checkout" method="POST" className="mt-8">
-                <input type="hidden" name="lang" value={lang} />
-                <input type="hidden" name="priceId" value={getPriceId('standard', lang) || ''} />
-                <button 
-                  type="submit" 
-                  disabled={isSubscribed}
-                  className={`w-full text-white rounded-md py-2 text-sm font-semibold transition-colors ${
-                    isSubscribed ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'
-                  }`}
-                >
-                  {isSubscribed ? dict.pricing.subscribed : dict.pricing.selectPlan}
-                </button>
-              </form>
-            </div>
-          </div>
-
-          {/* プレミアムプラン */}
-          <div className="border border-gray-200 rounded-lg shadow-sm divide-y divide-gray-200 bg-white">
-            <div className="p-6">
-              <h3 className="text-lg leading-6 font-medium text-gray-900">{dict.pricing.planPremium}</h3>
-              <p className="mt-8">
-                <span className="text-4xl font-extrabold text-gray-900">{dict.pricing.pricePremium}</span>
-                <span className="text-base font-medium text-gray-500">{dict.pricing.perMonth}</span>
-              </p>
-              <form action="/api/checkout" method="POST" className="mt-8">
-                <input type="hidden" name="lang" value={lang} />
-                <input type="hidden" name="priceId" value={getPriceId('premium', lang) || ''} />
-                <button 
-                  type="submit" 
-                  disabled={isSubscribed}
-                  className={`w-full text-white rounded-md py-2 text-sm font-semibold transition-colors ${
-                    isSubscribed ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-800 hover:bg-gray-900'
-                  }`}
-                >
-                  {isSubscribed ? dict.pricing.subscribed : dict.pricing.selectPlan}
-                </button>
-              </form>
-            </div>
-          </div>
-
-        </div>
-      </div>
-    </div>
-  )
 }
 </file>
 
@@ -2317,6 +2147,88 @@ export async function POST(request: Request) {
 }
 </file>
 
+<file path="app/[lang]/pricing/page.tsx">
+import { createClient } from '@/utils/supabase/server'
+import { redirect } from 'next/navigation'
+import { getDictionary } from '@/utils/get-dictionary'
+import LanguageSwitcher from '@/app/components/LanguageSwitcher'
+
+export const runtime = 'edge';
+
+export default async function PricingPage({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }) {
+  const { lang } = await params
+  const dict = await getDictionary(lang)
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    redirect(`/${lang}/login`)
+  }
+
+  const { data: existingSubscription } = await supabase
+    .from('subscriptions').select('*').eq('user_id', user.id).eq('status', 'active').limit(1).maybeSingle()
+
+  const getPriceId = (plan: 'light' | 'standard' | 'premium', currentLang: string) => {
+    if (plan === 'light') return process.env.STRIPE_PRICE_ID_LIGHT;
+    if (plan === 'standard') return process.env.STRIPE_PRICE_ID_STANDARD;
+    if (plan === 'premium') return process.env.STRIPE_PRICE_ID_PREMIUM;
+  }
+
+  const isSubscribed = !!existingSubscription
+
+  return (
+    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8 relative">
+      <div className="absolute top-6 right-6">
+        <LanguageSwitcher currentLang={lang} />
+      </div>
+
+      <div className="max-w-7xl mx-auto mt-8">
+        <div className="text-center">
+          <h2 className="text-3xl font-extrabold text-gray-900 sm:text-4xl">{dict.pricing.title}</h2>
+          <p className="mt-4 text-xl text-gray-600">{dict.pricing.subtitle}</p>
+        </div>
+
+        {isSubscribed && (
+          <div className="mt-8 max-w-3xl mx-auto bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 rounded shadow-sm">
+            <p className="font-bold">{dict.pricing.noticeTitle}</p>
+            <p>{dict.pricing.noticeMessage}</p>
+          </div>
+        )}
+
+        <div className="mt-12 max-w-md mx-auto">
+          
+          {/* 基本プラン（旧スタンダードプラン）のみを残す */}
+          <div className="border border-blue-500 rounded-lg shadow-md divide-y divide-gray-200 bg-white relative">
+            <div className="p-8 text-center">
+              <h3 className="text-xl leading-6 font-bold text-gray-900">{dict.pricing.planStandard}</h3>
+              <p className="mt-8">
+                <span className="text-5xl font-extrabold text-gray-900">{dict.pricing.priceStandard}</span>
+                <span className="text-lg font-medium text-gray-500">{dict.pricing.perMonth}</span>
+              </p>
+              <form action="/api/checkout" method="POST" className="mt-8">
+                <input type="hidden" name="lang" value={lang} />
+                <input type="hidden" name="priceId" value={process.env.STRIPE_PRICE_ID_STANDARD || ''} />
+                <button 
+                  type="submit" 
+                  disabled={isSubscribed}
+                  className={`w-full text-white rounded-md py-3 text-base font-bold transition-colors ${
+                    isSubscribed ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 shadow-md hover:shadow-lg'
+                  }`}
+                >
+                  {isSubscribed ? dict.pricing.subscribed : dict.pricing.selectPlan}
+                </button>
+              </form>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  )
+}
+</file>
+
 <file path="app/api/webhook/route.ts">
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js' // ★変更: 公式の標準クライアントを使用します
@@ -2375,8 +2287,8 @@ export async function POST(req: Request) {
         // INSERT実行
         const { data, error } = await supabaseAdmin.from('video_credits').insert({
           user_id: userId,
-          amount: 10,
-          remaining: 10,
+          amount: 25,
+          remaining: 25,
           expires_at: expiresAt.toISOString(),
         }).select();
 
@@ -2773,281 +2685,6 @@ export default async function UpdatePasswordPage({
 }
 </file>
 
-<file path="app/[lang]/dashboard/page.tsx">
-import { createClient } from '@/utils/supabase/server'
-import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import Stripe from 'stripe'
-import { getDictionary } from '@/utils/get-dictionary'
-import LanguageSwitcher from '@/app/components/LanguageSwitcher'
-
-export const runtime = 'edge';
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
-
-type Video = { id: string; title: string; vimeo_id: string; thumbnail_url: string | null }
-
-export default async function DashboardPage({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }) {
-  const { lang } = await params;
-  const dict = await getDictionary(lang);
-  
-  const supabase = await createClient()
-
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect(`/${lang}/login`)
-
-  const isAdmin = user.email === process.env.ADMIN_EMAIL;
-
-  const { data: subscription } = await supabase
-    .from('subscriptions').select('*').eq('user_id', user.id).eq('status', 'active').limit(1).maybeSingle()
-
-    const { data: credits } = await supabase
-      .from('video_credits')
-      .select('remaining')
-      .eq('user_id', user.id)
-      .gt('remaining', 0)
-      .gt('expires_at', new Date().toISOString());
-
-    // すべての有効なレコードの remaining を合計します
-    const totalTickets = credits?.reduce((acc, curr) => acc + curr.remaining, 0) || 0;
-
-  // 3. 今期の視聴済み本数を取得 (サブスク期間内)
-    let watchedCount = 0;
-    if (subscription) {
-      const { count } = await supabase
-        .from('viewing_history')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .gte('viewed_at', subscription.current_period_start)
-        .lte('viewed_at', subscription.current_period_end);
-      watchedCount = count || 0;
-    }
-
-    // 4. 合計キャパシティの計算 (基本枠 + チケット枠)
-    const planLimits: Record<string, number> = { light: 10, standard: 30, premium: 1000 };
-    const baseLimit = subscription ? (planLimits[subscription.plan_type] || 0) : 0;
-    const totalCapacity = baseLimit + totalTickets;
-
-    // ビデオデータ等の取得 (既存ロジック)
-    const { data: videos } = await supabase.from('videos').select('*')
-    const { data: history } = await supabase.from('viewing_history').select('vimeo_video_id').eq('user_id', user.id)
-    const viewedIds = new Set(history?.map(h => h.vimeo_video_id) || [])
-
-  const { data: latestHistory } = await supabase
-    .from('viewing_history').select('vimeo_video_id').eq('user_id', user.id)
-    .order('viewed_at', { ascending: false }).limit(1).maybeSingle()
-
-  let lastWatchedVideo: Video | null = null
-  if (latestHistory && videos) {
-    lastWatchedVideo = videos.find(v => v.vimeo_id === latestHistory.vimeo_video_id) as Video || null
-  }
-
-  const { data: favoritesData } = await supabase
-    .from('favorites').select('vimeo_video_id').eq('user_id', user.id).order('created_at', { ascending: false })
-
-  const favoriteIds = new Set(favoritesData?.map(f => f.vimeo_video_id) || [])
-  const favoriteVideos = videos?.filter(v => favoriteIds.has(v.vimeo_id)) as Video[] || []
-
-  const groupedVideos: Record<string, Video[]> = {}
-  if (videos) {
-    videos.forEach((video) => {
-      const match = video.title.match(/^(\d+)-/)
-      const section = match ? match[1] : 'その他'
-      if (!groupedVideos[section]) groupedVideos[section] = []
-      groupedVideos[section].push(video as Video)
-    })
-  }
-
-  const sortedSections = Object.keys(groupedVideos).sort((a, b) => {
-    if (a === 'その他') return 1; if (b === 'その他') return -1;
-    return parseInt(a) - parseInt(b);
-  })
-
-  const sectionStats = sortedSections.map(section => {
-    const totalCount = groupedVideos[section].length
-    const viewedCount = groupedVideos[section].filter(v => viewedIds.has(v.vimeo_id)).length
-    const progress = totalCount > 0 ? Math.round((viewedCount / totalCount) * 100) : 0
-    return { section, totalCount, viewedCount, progress }
-  })
-
-  const getPlanName = (planType: string) => {
-    switch (planType) {
-      case 'light': return dict.dashboard.planLight
-      case 'standard': return dict.dashboard.planStandard
-      case 'premium': return dict.dashboard.planPremium
-      default: return dict.dashboard.planNone
-    }
-  }
-
-  const VideoCard = ({ video, label }: { video: Video, label?: string }) => {
-    const isViewed = viewedIds.has(video.vimeo_id)
-    return (
-      <Link href={`/${lang}/video/${video.vimeo_id}`} className="block group">
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-lg transition-all hover:border-blue-300 flex items-center p-3 gap-4 relative">
-          <div className="w-32 aspect-video bg-gray-100 rounded-lg shrink-0 relative overflow-hidden flex items-center justify-center">
-            {video.thumbnail_url ? (
-               <img src={video.thumbnail_url} alt={video.title} className="object-cover w-full h-full group-hover:scale-105 transition-transform" />
-            ) : (
-               <span className="text-gray-400 text-xs font-medium">Video</span>
-            )}
-            {isViewed && (
-              <div className="absolute top-1 right-1 bg-green-500 text-white text-[10px] px-1.5 py-0.5 rounded shadow-sm font-bold">✓</div>
-            )}
-          </div>
-          <div className="grow">
-            {label && <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded mb-1 inline-block">{label}</span>}
-            <h3 className="font-bold text-gray-900 group-hover:text-blue-600 transition-colors line-clamp-2">{video.title}</h3>
-          </div>
-          <div className="pr-4 hidden sm:block">
-            <span className="text-blue-600 font-medium text-sm">{dict.dashboard.watch}</span>
-          </div>
-        </div>
-      </Link>
-    )
-  }
-
-  return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-8">
-      <div className="max-w-5xl mx-auto">
-        
-        {/* ヘッダー */}
-        <div className="flex justify-between items-center mb-8 bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-          <h1 className="text-2xl font-bold text-gray-800">{dict.dashboard.title}</h1>
-          <div className="flex items-center gap-4">
-            <LanguageSwitcher currentLang={lang} />
-            <form action="/api/auth/signout" method="POST">
-              <button className="px-4 py-2 text-sm text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200">{dict.dashboard.logoutButton}</button>
-            </form>
-          </div>
-        </div>
-        
-        {/* ご契約状況 */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6 mb-8">
-          <p className="mb-4 text-gray-600">
-            {dict.dashboard.welcome}<span className="font-semibold text-gray-800">{user.email}</span>{dict.dashboard.honorific}
-          </p>
-          <div className="bg-linear-to-r from-blue-50 border-l-4 border-blue-500 rounded-r-md p-6">
-            <h2 className="text-sm font-bold text-blue-800 mb-2 tracking-wider">{dict.dashboard.subscriptionStatus}</h2>
-            {subscription ? (
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <p className="text-2xl font-extrabold text-blue-900 mb-1">{getPlanName(subscription.plan_type)}</p>
-                  <p className="text-sm text-blue-700">
-                    {dict.dashboard.renewalDate}{new Date(subscription.current_period_end).toLocaleDateString(lang === 'ja' ? 'ja-JP' : 'en-US')}
-                  </p>
-                </div>
-
-                {/* ★進捗インジケーターボックス */}
-                  <div className="bg-white/80 px-5 py-3 rounded-xl border border-blue-100 shadow-sm min-w-50">
-                    <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest mb-1">Annual Usage</p>
-                    <div className="flex items-baseline gap-1.5">
-                      <span className="text-3xl font-black text-gray-900">{watchedCount}</span>
-                      <span className="text-sm font-bold text-gray-400">/ {subscription.plan_type === 'premium' ? '∞' : totalCapacity}</span>
-                      <span className="text-xs font-bold text-gray-500 ml-1">本</span>
-                    </div>
-                    {subscription.plan_type !== 'premium' && (
-                      <div className="w-full bg-gray-200 h-2 rounded-full mt-2 overflow-hidden">
-                        <div 
-                          className="bg-blue-600 h-full transition-all duration-500" 
-                          style={{ width: `${Math.min((watchedCount / totalCapacity) * 100, 100)}%` }}
-                        ></div>
-                      </div>
-                    )}
-                  </div>
-
-                {/* 修正後 */}
-                <form action="/api/portal" method="POST">
-                  <input type="hidden" name="lang" value={lang} />
-                   <button type="submit" className="text-sm bg-white border border-blue-200 text-blue-700 px-5 py-2.5 rounded-md hover:bg-blue-50 font-medium shadow-sm">
-                     {dict.dashboard.manageSubscription}
-                   </button>
-                </form>
-              </div>
-            ) : (
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <p className="text-blue-800 font-medium">{dict.dashboard.noSubscription}</p>
-                <Link href={`/${lang}/pricing`} className="inline-block px-6 py-2.5 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 text-center">
-                  {dict.dashboard.choosePlan}
-                </Link>
-              </div>
-            )}
-
-            <div className="mt-6 pt-6 border-t border-blue-100 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center text-xl">🎟️</div>
-                <div>
-                  <p className="text-sm font-bold text-blue-900">
-                    有効な追加チケット: {totalTickets} 枚
-                  </p>
-                  <p className="text-[10px] text-blue-600 font-medium">※合計100本までストック可能です</p>
-                </div>
-              </div>
-              
-              <form action="/api/checkout" method="POST">
-                <input type="hidden" name="lang" value={lang} />
-                <input type="hidden" name="priceId" value={process.env.STRIPE_PRICE_ID_ADDON} />
-                <input type="hidden" name="type" value="addon" /> {/* ★追加購入であることを明示 */}
-                <button type="submit" className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-extrabold rounded-lg shadow-md transition-all active:scale-95">
-                  {dict.dashboard.buyTickets}
-                </button>
-              </form>
-            </div>
-          </div>
-        </div>
-
-        {/* クイックアクセス */}
-        {(lastWatchedVideo || favoriteVideos.length > 0) && (
-          <div className="mb-12 grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {lastWatchedVideo && (
-              <div>
-                <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                  <span className="text-blue-600">▶</span> {dict.dashboard.continueWatching}
-                </h2>
-                <VideoCard video={lastWatchedVideo} label={dict.dashboard.recentlyWatched} />
-              </div>
-            )}
-            {favoriteVideos.length > 0 && (
-              <div>
-                <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                  <span className="text-pink-500">♥</span> {dict.dashboard.favorites}
-                </h2>
-                <div className="space-y-3">
-                  {favoriteVideos.slice(0, 3).map(video => (
-                    <VideoCard key={video.id} video={video} />
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* コース一覧（セクション一覧） */}
-        <h2 className="text-xl font-bold text-gray-800 mb-6 border-b border-gray-200 pb-2">{dict.dashboard.courseList}</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {sectionStats.map(({ section, totalCount, viewedCount, progress }) => (
-            <Link href={`/${lang}/section/${section}`} key={section} className="block group">
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-all hover:border-blue-300">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-bold text-gray-900 group-hover:text-blue-600">{dict.dashboard.section}{section}</h3>
-                  <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-md">{totalCount}{dict.dashboard.videosCount}</span>
-                </div>
-                <div className="w-full bg-gray-100 rounded-full h-2 mb-2">
-                  <div className="bg-blue-600 h-2 rounded-full transition-all duration-500" style={{ width: `${progress}%` }}></div>
-                </div>
-                <div className="flex justify-between text-xs text-gray-500 font-medium">
-                  <span>{dict.dashboard.progress}{progress}%</span>
-                  <span>{viewedCount} / {totalCount}{dict.dashboard.completed}</span>
-                </div>
-              </div>
-            </Link>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
-</file>
-
 <file path="app/[lang]/signup/page.tsx">
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
@@ -3121,6 +2758,271 @@ export default async function SignupPage({
           </Link>
         </div>
       </form>
+    </div>
+  )
+}
+</file>
+
+<file path="app/[lang]/dashboard/page.tsx">
+import { createClient } from '@/utils/supabase/server'
+import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import Stripe from 'stripe'
+import { getDictionary } from '@/utils/get-dictionary'
+import LanguageSwitcher from '@/app/components/LanguageSwitcher'
+
+export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+type Video = { id: string; title: string; vimeo_id: string; thumbnail_url: string | null }
+
+export default async function DashboardPage({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }) {
+  const { lang } = await params;
+  const dict = await getDictionary(lang);
+  
+  const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect(`/${lang}/login`)
+
+  const isAdmin = user.email === process.env.ADMIN_EMAIL;
+
+  const { data: subscription } = await supabase
+    .from('subscriptions').select('*').eq('user_id', user.id).eq('status', 'active').limit(1).maybeSingle()
+
+    const { data: credits } = await supabase
+      .from('video_credits')
+      .select('remaining')
+      .eq('user_id', user.id)
+      .gt('remaining', 0)
+      .gt('expires_at', new Date().toISOString());
+
+    // すべての有効なレコードの remaining を合計します
+    const totalTickets = credits?.reduce((acc, curr) => acc + curr.remaining, 0) || 0;
+
+  // 3. 今期の視聴済み本数を取得 (サブスク期間内)
+    let watchedCount = 0;
+    if (subscription) {
+      const { count } = await supabase
+        .from('viewing_history')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .gte('viewed_at', subscription.current_period_start)
+        .lte('viewed_at', subscription.current_period_end);
+      watchedCount = count || 0;
+    }
+
+    // 4. 合計キャパシティの計算 (基本枠 + チケット枠)
+    const baseLimit = subscription ? 25 : 0;
+    const totalCapacity = baseLimit + totalTickets;
+
+    // ビデオデータ等の取得 (既存ロジック)
+    const { data: videos } = await supabase.from('videos').select('*')
+    const { data: history } = await supabase.from('viewing_history').select('vimeo_video_id').eq('user_id', user.id)
+    const viewedIds = new Set(history?.map(h => h.vimeo_video_id) || [])
+
+  const { data: latestHistory } = await supabase
+    .from('viewing_history').select('vimeo_video_id').eq('user_id', user.id)
+    .order('viewed_at', { ascending: false }).limit(1).maybeSingle()
+
+  let lastWatchedVideo: Video | null = null
+  if (latestHistory && videos) {
+    lastWatchedVideo = videos.find(v => v.vimeo_id === latestHistory.vimeo_video_id) as Video || null
+  }
+
+  const { data: favoritesData } = await supabase
+    .from('favorites').select('vimeo_video_id').eq('user_id', user.id).order('created_at', { ascending: false })
+
+  const favoriteIds = new Set(favoritesData?.map(f => f.vimeo_video_id) || [])
+  const favoriteVideos = videos?.filter(v => favoriteIds.has(v.vimeo_id)) as Video[] || []
+
+  const groupedVideos: Record<string, Video[]> = {}
+  if (videos) {
+    videos.forEach((video) => {
+      const match = video.title.match(/^(\d+)-/)
+      const section = match ? match[1] : 'その他'
+      if (!groupedVideos[section]) groupedVideos[section] = []
+      groupedVideos[section].push(video as Video)
+    })
+  }
+
+  const sortedSections = Object.keys(groupedVideos).sort((a, b) => {
+    if (a === 'その他') return 1; if (b === 'その他') return -1;
+    return parseInt(a) - parseInt(b);
+  })
+
+  const sectionStats = sortedSections.map(section => {
+    const totalCount = groupedVideos[section].length
+    const viewedCount = groupedVideos[section].filter(v => viewedIds.has(v.vimeo_id)).length
+    const progress = totalCount > 0 ? Math.round((viewedCount / totalCount) * 100) : 0
+    return { section, totalCount, viewedCount, progress }
+  })
+
+  const VideoCard = ({ video, label }: { video: Video, label?: string }) => {
+    const isViewed = viewedIds.has(video.vimeo_id)
+    return (
+      <Link href={`/${lang}/video/${video.vimeo_id}`} className="block group">
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-lg transition-all hover:border-blue-300 flex items-center p-3 gap-4 relative">
+          <div className="w-32 aspect-video bg-gray-100 rounded-lg shrink-0 relative overflow-hidden flex items-center justify-center">
+            {video.thumbnail_url ? (
+               <img src={video.thumbnail_url} alt={video.title} className="object-cover w-full h-full group-hover:scale-105 transition-transform" />
+            ) : (
+               <span className="text-gray-400 text-xs font-medium">Video</span>
+            )}
+            {isViewed && (
+              <div className="absolute top-1 right-1 bg-green-500 text-white text-[10px] px-1.5 py-0.5 rounded shadow-sm font-bold">✓</div>
+            )}
+          </div>
+          <div className="grow">
+            {label && <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded mb-1 inline-block">{label}</span>}
+            <h3 className="font-bold text-gray-900 group-hover:text-blue-600 transition-colors line-clamp-2">{video.title}</h3>
+          </div>
+          <div className="pr-4 hidden sm:block">
+            <span className="text-blue-600 font-medium text-sm">{dict.dashboard.watch}</span>
+          </div>
+        </div>
+      </Link>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-4 md:p-8">
+      <div className="max-w-5xl mx-auto">
+        
+        {/* ヘッダー */}
+        <div className="flex justify-between items-center mb-8 bg-white p-4 rounded-lg shadow-sm border border-gray-100">
+          <h1 className="text-2xl font-bold text-gray-800">{dict.dashboard.title}</h1>
+          <div className="flex items-center gap-4">
+            <LanguageSwitcher currentLang={lang} />
+            <form action="/api/auth/signout" method="POST">
+              <button className="px-4 py-2 text-sm text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200">{dict.dashboard.logoutButton}</button>
+            </form>
+          </div>
+        </div>
+        
+        {/* ご契約状況 */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6 mb-8">
+          <p className="mb-4 text-gray-600">
+            {dict.dashboard.welcome}<span className="font-semibold text-gray-800">{user.email}</span>{dict.dashboard.honorific}
+          </p>
+          <div className="bg-linear-to-r from-blue-50 border-l-4 border-blue-500 rounded-r-md p-6">
+            <h2 className="text-sm font-bold text-blue-800 mb-2 tracking-wider">{dict.dashboard.subscriptionStatus}</h2>
+            {subscription ? (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <p className="text-2xl font-extrabold text-blue-900 mb-1">{dict.dashboard.planStandard}</p>
+                  <p className="text-sm text-blue-700">
+                    {dict.dashboard.renewalDate}{new Date(subscription.current_period_end).toLocaleDateString(lang === 'ja' ? 'ja-JP' : 'en-US')}
+                  </p>
+                </div>
+
+                {/* ★進捗インジケーターボックス */}
+                  <div className="bg-white/80 px-5 py-3 rounded-xl border border-blue-100 shadow-sm min-w-50">
+                    <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest mb-1">Monthly Usage</p>
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-3xl font-black text-gray-900">{watchedCount}</span>
+                      <span className="text-sm font-bold text-gray-400">/ {totalCapacity}</span>
+                      <span className="text-xs font-bold text-gray-500 ml-1">本</span>
+                      </div>
+                      <div className="w-full bg-gray-200 h-2 rounded-full mt-2 overflow-hidden">
+                        <div 
+                          className="bg-blue-600 h-full transition-all duration-500" 
+                          style={{ width: `${Math.min((watchedCount / totalCapacity) * 100, 100)}%` }}
+                        ></div>
+                      </div>
+                  </div>
+
+                {/* 修正後 */}
+                <form action="/api/portal" method="POST">
+                  <input type="hidden" name="lang" value={lang} />
+                   <button type="submit" className="text-sm bg-white border border-blue-200 text-blue-700 px-5 py-2.5 rounded-md hover:bg-blue-50 font-medium shadow-sm">
+                     {dict.dashboard.manageSubscription}
+                   </button>
+                </form>
+              </div>
+            ) : (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <p className="text-blue-800 font-medium">{dict.dashboard.noSubscription}</p>
+                <Link href={`/${lang}/pricing`} className="inline-block px-6 py-2.5 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 text-center">
+                  {dict.dashboard.choosePlan}
+                </Link>
+              </div>
+            )}
+
+            <div className="mt-6 pt-6 border-t border-blue-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center text-xl">🎟️</div>
+                <div>
+                  <p className="text-sm font-bold text-blue-900">
+                    {dict.dashboard.validTickets.replace('{count}', totalTickets.toString())}
+                  </p>
+                  <p className="text-[10px] text-blue-600 font-medium">
+                    {dict.dashboard.ticketStockLimit}
+                  </p>
+                </div>
+              </div>
+              
+              <form action="/api/checkout" method="POST">
+                <input type="hidden" name="lang" value={lang} />
+                <input type="hidden" name="priceId" value={process.env.STRIPE_PRICE_ID_ADDON} />
+                <input type="hidden" name="type" value="addon" /> {/* ★追加購入であることを明示 */}
+                <button type="submit" className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-extrabold rounded-lg shadow-md transition-all active:scale-95">
+                  {dict.dashboard.buyTickets}
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        {/* クイックアクセス */}
+        {(lastWatchedVideo || favoriteVideos.length > 0) && (
+          <div className="mb-12 grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {lastWatchedVideo && (
+              <div>
+                <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                  <span className="text-blue-600">▶</span> {dict.dashboard.continueWatching}
+                </h2>
+                <VideoCard video={lastWatchedVideo} label={dict.dashboard.recentlyWatched} />
+              </div>
+            )}
+            {favoriteVideos.length > 0 && (
+              <div>
+                <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                  <span className="text-pink-500">♥</span> {dict.dashboard.favorites}
+                </h2>
+                <div className="space-y-3">
+                  {favoriteVideos.slice(0, 3).map(video => (
+                    <VideoCard key={video.id} video={video} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* コース一覧（セクション一覧） */}
+        <h2 className="text-xl font-bold text-gray-800 mb-6 border-b border-gray-200 pb-2">{dict.dashboard.courseList}</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {sectionStats.map(({ section, totalCount, viewedCount, progress }) => (
+            <Link href={`/${lang}/section/${section}`} key={section} className="block group">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-all hover:border-blue-300">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-bold text-gray-900 group-hover:text-blue-600">{dict.dashboard.section}{section}</h3>
+                  <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-md">{totalCount}{dict.dashboard.videosCount}</span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-2 mb-2">
+                  <div className="bg-blue-600 h-2 rounded-full transition-all duration-500" style={{ width: `${progress}%` }}></div>
+                </div>
+                <div className="flex justify-between text-xs text-gray-500 font-medium">
+                  <span>{dict.dashboard.progress}{progress}%</span>
+                  <span>{viewedCount} / {totalCount}{dict.dashboard.completed}</span>
+                </div>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }

@@ -15,25 +15,23 @@ export async function GET(request: Request) {
     if (!error && data?.session) {
       const user = data.session.user;
 
-      const { data: subscription } = await supabase
+      const newSessionId = crypto.randomUUID();
+      await supabase
         .from('subscriptions')
-        .select('plan_type')
-        .eq('user_id', user.id)
-        .maybeSingle();
+        .update({ current_session_id: newSessionId })
+        .eq('user_id', user.id);
         
-      if (subscription?.plan_type === 'light' || subscription?.plan_type === 'standard') {
-        // アクセストークンの末尾など、このセッション固有の値を識別子とする
-        const sessionId = data.session.access_token.slice(-20);
-        
-        await supabase
-          .from('subscriptions')
-          .update({ current_session_id: sessionId })
-          .eq('user_id', user.id);
-          
-        console.log(`【セッション更新】: ユーザー ${user.id} (${subscription.plan_type})`);
-      }
+      console.log(`【セッション更新】: ユーザー ${user.id}`);
 
-      return NextResponse.redirect(`${origin}${next}`)
+      // ★修正：レスポンスを作成しCookieを付与
+      const response = NextResponse.redirect(`${origin}${next}`);
+      response.cookies.set('device_session_id', newSessionId, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 60 * 60 * 24 * 365,
+        path: '/',
+      });
+      return response;
     } else {
       console.error('【認証エラー発生】:', error?.message)
     }

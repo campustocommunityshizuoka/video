@@ -111,9 +111,7 @@ export async function POST(req: Request) {
       }
 
       if (userId) {
-        let planType = 'light'
-        if (planId === process.env.STRIPE_PRICE_ID_STANDARD) planType = 'standard'
-        if (planId === process.env.STRIPE_PRICE_ID_PREMIUM) planType = 'premium'
+        const planType = 'standard';
 
         await supabaseAdmin.from('subscriptions').upsert({
           user_id: userId,

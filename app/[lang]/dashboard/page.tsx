@@ -189,9 +189,11 @@ export default async function DashboardPage({ params }: { params: Promise<{ lang
                 <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center text-xl">🎟️</div>
                 <div>
                   <p className="text-sm font-bold text-blue-900">
-                    有効な追加チケット: {totalTickets} 枚
+                    {dict.dashboard.validTickets.replace('{count}', totalTickets.toString())}
                   </p>
-                  <p className="text-[10px] text-blue-600 font-medium">※合計100本までストック可能です</p>
+                  <p className="text-[10px] text-blue-600 font-medium">
+                    {dict.dashboard.ticketStockLimit}
+                  </p>
                 </div>
               </div>
               

@@ -12,6 +12,7 @@ export async function POST(request: Request) {
   const currentLang = formData.get('lang') as string || 'ja'
   
   let redirectUrl = ''
+  let newSessionId = ''
 
   try {
     const supabase = await createClient()
@@ -25,21 +26,14 @@ export async function POST(request: Request) {
       redirectUrl = `/${currentLang}/login?message=error`
     } else if (data.session) {
       // ★ ここから追加：セッションIDをDBに記録
+      newSessionId = crypto.randomUUID()
+      
       const user = data.session.user
-      const { data: sub } = await supabase
-        .from('subscriptions')
-        .select('plan_type')
-        .eq('user_id', user.id)
-        .maybeSingle()
 
-      // ライト・スタンダードのみ制限
-      if (sub?.plan_type === 'light' || sub?.plan_type === 'standard') {
-        const sessionId = data.session.access_token.slice(-20)
-        const { error: updateError } = await supabase
-          .from('subscriptions')
-          .update({ current_session_id: sessionId })
-          .eq('user_id', user.id)
-      }
+      await supabase
+        .from('subscriptions')
+        .update({ current_session_id: newSessionId })
+        .eq('user_id', user.id)
       
       redirectUrl = `/${currentLang}/dashboard`
     }
@@ -48,6 +42,14 @@ export async function POST(request: Request) {
     redirectUrl = `/ja/login?message=error`
   }
 
-  // 303 (See Other) を使って、POSTリクエストから安全にリダイレクトさせます
-  return NextResponse.redirect(new URL(redirectUrl, request.url), 303)
+  const response = NextResponse.redirect(new URL(redirectUrl, request.url), 303)
+  if (newSessionId) {
+    response.cookies.set('device_session_id', newSessionId, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 60 * 60 * 24 * 365, // 1年保持
+      path: '/',
+    })
+  }
+  return response
 }

@@ -89,7 +89,9 @@
     "progress": "Progress: ",
     "completed": " Completed",
     "remainingTickets": "Extra Tickets: {count} remaining",
-    "buyTickets": "Buy 25 Extra Video Tickets ($35.00)"
+    "buyTickets": "Buy 25 Extra Video Tickets ($35.00)",
+    "validTickets": "Valid Extra Tickets: {count}",
+    "ticketStockLimit": "* Maximum stock is 100 tickets."
   },
   "section": {
     "backToDashboard": "← Back to Dashboard",

@@ -88,7 +88,9 @@
     "progress": "進捗: ",
     "completed": " 完了",
     "remainingTickets": "追加視聴枠：残り {count} 本",
-    "buyTickets": "動画視聴枠を 25本購入する ($35) "
+    "buyTickets": "動画視聴枠を 25本購入する ($35) ",
+    "validTickets": "有効な追加チケット: {count} 枚",
+    "ticketStockLimit": "※合計100本までストック可能です"
   },
   "section": {
     "backToDashboard": "← ダッシュボードへ戻る",

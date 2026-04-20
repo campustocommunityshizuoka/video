@@ -26,9 +26,7 @@ export default async function AdminDashboard({ params }: { params: Promise<{ lan
   const { data: subscriptions } = await supabaseAdmin.from('subscriptions').select('*')
   const activeSubs = subscriptions?.filter(sub => sub.status === 'active') || []
   
-  const lightCount = activeSubs.filter(sub => sub.plan_type === 'light').length
-  const standardCount = activeSubs.filter(sub => sub.plan_type === 'standard').length
-  const premiumCount = activeSubs.filter(sub => sub.plan_type === 'premium').length
+  const standardCount = activeSubs.filter(sub => sub.plan_type === 'standard').length;
 
   const { data: videos } = await supabase.from('videos').select('*').order('created_at', { ascending: false })
 
@@ -53,16 +51,8 @@ export default async function AdminDashboard({ params }: { params: Promise<{ lan
               
               <div className="space-y-3">
                 <div className="flex justify-between items-center text-sm">
-                  <span className="text-gray-400">ライトプラン</span>
-                  <span className="font-bold text-white">{lightCount} 名</span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
                   <span className="text-blue-400">スタンダード</span>
                   <span className="font-bold text-white">{standardCount} 名</span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-purple-400">プレミアム</span>
-                  <span className="font-bold text-white">{premiumCount} 名</span>
                 </div>
               </div>
             </div>
@@ -85,12 +75,12 @@ export default async function AdminDashboard({ params }: { params: Promise<{ lan
           </div>
 
           <div className="lg:col-span-2">
-            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg h-full max-h-[800px] flex flex-col">
+            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg h-full max-h-200 flex flex-col">
               <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-2">
                 <h2 className="text-lg font-bold text-white">登録済み動画一覧</h2>
                 <span className="text-sm text-gray-400">計 {videos?.length || 0} 本</span>
               </div>
-              <div className="overflow-y-auto pr-2 flex-grow space-y-2">
+              <div className="overflow-y-auto pr-2 grow space-y-2">
                 {videos?.map(video => (
                   <div key={video.id} className="flex items-center justify-between bg-gray-700 p-3 rounded-lg border border-gray-600 hover:border-gray-500 transition-colors">
                     <div><span className="text-blue-400 font-bold mr-3">{video.title}</span><span className="text-sm text-gray-400">ID: {video.vimeo_id}</span></div>
