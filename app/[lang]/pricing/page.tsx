@@ -46,24 +46,24 @@ export default async function PricingPage({ params }: { params: Promise<{ lang: 
           </div>
         )}
 
-        <div className="mt-12 space-y-4 sm:space-y-0 sm:grid sm:grid-cols-3 sm:gap-6 lg:max-w-4xl lg:mx-auto xl:max-w-none xl:mx-0 xl:grid-cols-3">
-
-          {/* スタンダードプラン */}
+        <div className="mt-12 max-w-md mx-auto">
+          
+          {/* 基本プラン（旧スタンダードプラン）のみを残す */}
           <div className="border border-blue-500 rounded-lg shadow-md divide-y divide-gray-200 bg-white relative">
-            <div className="p-6">
-              <h3 className="text-lg leading-6 font-medium text-gray-900">{dict.pricing.planStandard}</h3>
+            <div className="p-8 text-center">
+              <h3 className="text-xl leading-6 font-bold text-gray-900">{dict.pricing.planStandard}</h3>
               <p className="mt-8">
-                <span className="text-4xl font-extrabold text-gray-900">{dict.pricing.priceStandard}</span>
-                <span className="text-base font-medium text-gray-500">{dict.pricing.perMonth}</span>
+                <span className="text-5xl font-extrabold text-gray-900">{dict.pricing.priceStandard}</span>
+                <span className="text-lg font-medium text-gray-500">{dict.pricing.perMonth}</span>
               </p>
               <form action="/api/checkout" method="POST" className="mt-8">
                 <input type="hidden" name="lang" value={lang} />
-                <input type="hidden" name="priceId" value={getPriceId('standard', lang) || ''} />
+                <input type="hidden" name="priceId" value={process.env.STRIPE_PRICE_ID_STANDARD || ''} />
                 <button 
                   type="submit" 
                   disabled={isSubscribed}
-                  className={`w-full text-white rounded-md py-2 text-sm font-semibold transition-colors ${
-                    isSubscribed ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'
+                  className={`w-full text-white rounded-md py-3 text-base font-bold transition-colors ${
+                    isSubscribed ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 shadow-md hover:shadow-lg'
                   }`}
                 >
                   {isSubscribed ? dict.pricing.subscribed : dict.pricing.selectPlan}

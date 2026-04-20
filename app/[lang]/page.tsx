@@ -119,37 +119,14 @@ export default async function HomePage({ params }: { params: Promise<{ lang: 'ja
               <p className="text-gray-600">{dict.home.pricingDesc}</p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-              {/* プラン1 */}
-              <div className="bg-white rounded-2xl p-8 border border-gray-200 shadow-sm text-center">
-                <h3 className="text-lg font-medium text-gray-500 mb-2">{dict.home.planLight}</h3>
-                <p className="text-4xl font-extrabold text-gray-900 mb-6">¥100,000<span className="text-base font-normal text-gray-500">{dict.home.perMonth}</span></p>
-                <ul className="text-left space-y-3 mb-8 text-gray-600">
-                  <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> {dict.home.lightFeature1}</li>
-                  <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> {dict.home.featureProgress}</li>
-                </ul>
-              </div>
-              
-              {/* プラン2（おすすめ） */}
-              <div className="bg-white rounded-2xl p-8 border-2 border-blue-500 shadow-xl text-center relative transform md:-translate-y-4">
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-blue-500 text-white px-4 py-1 rounded-full text-sm font-bold tracking-wide">{dict.home.mostPopular}</div>
-                <h3 className="text-lg font-medium text-blue-600 mb-2">{dict.home.planStandard}</h3>
-                <p className="text-4xl font-extrabold text-gray-900 mb-6">¥500,000<span className="text-base font-normal text-gray-500">{dict.home.perMonth}</span></p>
-                <ul className="text-left space-y-3 mb-8 text-gray-600">
-                  <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> {dict.home.standardFeature1}</li>
-                  <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> {dict.home.featureProgress}</li>
-                  <li className="flex items-center"><span className="text-green-500 mr-2">✓</span> {dict.home.featureAllAccess}</li>
-                </ul>
-              </div>
-
-              {/* プラン3 */}
-              <div className="bg-gray-900 rounded-2xl p-8 border border-gray-800 shadow-sm text-center text-white">
-                <h3 className="text-lg font-medium text-gray-400 mb-2">{dict.home.planPremium}</h3>
-                <p className="text-4xl font-extrabold text-white mb-6">¥1,000,000<span className="text-base font-normal text-gray-400">{dict.home.perMonth}</span></p>
-                <ul className="text-left space-y-3 mb-8 text-gray-300">
-                  <li className="flex items-center"><span className="text-blue-400 mr-2">✓</span> {dict.home.premiumFeature1}</li>
-                  <li className="flex items-center"><span className="text-blue-400 mr-2">✓</span> {dict.home.featureProgress}</li>
-                  <li className="flex items-center"><span className="text-blue-400 mr-2">✓</span> {dict.home.featureAllAccess}</li>
+            {/* グリッドを1カラムに変更し、中央に配置 */}
+            <div className="max-w-md mx-auto">
+              <div className="bg-white rounded-2xl p-8 border-2 border-blue-500 shadow-xl text-center relative">
+                <h3 className="text-xl font-bold text-blue-600 mb-2">{dict.home.planStandard}</h3>
+                <p className="text-5xl font-extrabold text-gray-900 mb-6">$35.00<span className="text-base font-normal text-gray-500">{dict.home.perMonth}</span></p>
+                <ul className="text-left space-y-4 mb-8 text-gray-600 font-medium">
+                  <li className="flex items-center"><span className="text-green-500 mr-3 text-xl">✓</span> {dict.home.featureProgress}</li>
+                  <li className="flex items-center"><span className="text-green-500 mr-3 text-xl">✓</span> {dict.home.featureAllAccess}</li>
                 </ul>
               </div>
             </div>
