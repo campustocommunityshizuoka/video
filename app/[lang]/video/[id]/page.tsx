@@ -36,9 +36,7 @@ export default async function VideoPage({
     )
   }
 
-  const planLimits: Record<string, number> = { light: 10, standard: 30, premium: 9999999 }
-  const limit = planLimits[subscription.plan_type] || 0
-
+  const limit = 25;
   const { count } = await supabase
     .from('viewing_history').select('*', { count: 'exact', head: true })
     .eq('user_id', user.id)
@@ -150,7 +148,7 @@ export default async function VideoPage({
           <div className="text-center border-t sm:border-t-0 sm:border-x border-gray-100 py-4 sm:py-0">
             <p className="text-sm text-gray-500 mb-1">{dict.video.yearlyWatchCount}</p>
             <p className="text-lg font-semibold text-gray-800">
-              {currentCount} <span className="text-sm font-normal text-gray-500">/ {subscription.plan_type === 'premium' ? dict.video.unlimited : `${limit}${dict.video.videosUnit}`}</span>
+              {currentCount} <span className="text-sm font-normal text-gray-500">/ {limit}{dict.video.videosUnit}</span>
             </p>
           </div>
           <div className="text-right">

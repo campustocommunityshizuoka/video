@@ -43,8 +43,8 @@ export async function POST(req: Request) {
 
     const currentCount = count || 0
     // 年契約に合わせた制限（例：ライトなら年120本など。必要に応じて数値を調整してください）
-    const planLimits: Record<string, number> = { light: 10, standard: 30, premium: 1000 }
-    const limit = planLimits[subscription.plan_type] || 0
+    // プランによる分岐を削除し、上限を25本で固定します
+    const limit = 25;
 
     if (currentCount >= limit) {
       // チケット（買い足し枠）のチェックロジックはそのまま維持

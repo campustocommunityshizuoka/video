@@ -47,30 +47,6 @@ export default async function PricingPage({ params }: { params: Promise<{ lang: 
         )}
 
         <div className="mt-12 space-y-4 sm:space-y-0 sm:grid sm:grid-cols-3 sm:gap-6 lg:max-w-4xl lg:mx-auto xl:max-w-none xl:mx-0 xl:grid-cols-3">
-          
-          {/* ライトプラン */}
-          <div className="border border-gray-200 rounded-lg shadow-sm divide-y divide-gray-200 bg-white">
-            <div className="p-6">
-              <h3 className="text-lg leading-6 font-medium text-gray-900">{dict.pricing.planLight}</h3>
-              <p className="mt-8">
-                <span className="text-4xl font-extrabold text-gray-900">{dict.pricing.priceLight}</span>
-                <span className="text-base font-medium text-gray-500">{dict.pricing.perMonth}</span>
-              </p>
-              <form action="/api/checkout" method="POST" className="mt-8">
-                <input type="hidden" name="lang" value={lang} />
-                <input type="hidden" name="priceId" value={getPriceId('light', lang) || ''} />
-                <button 
-                  type="submit" 
-                  disabled={isSubscribed}
-                  className={`w-full text-white rounded-md py-2 text-sm font-semibold transition-colors ${
-                    isSubscribed ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
-                  }`}
-                >
-                  {isSubscribed ? dict.pricing.subscribed : dict.pricing.selectPlan}
-                </button>
-              </form>
-            </div>
-          </div>
 
           {/* スタンダードプラン */}
           <div className="border border-blue-500 rounded-lg shadow-md divide-y divide-gray-200 bg-white relative">
@@ -88,30 +64,6 @@ export default async function PricingPage({ params }: { params: Promise<{ lang: 
                   disabled={isSubscribed}
                   className={`w-full text-white rounded-md py-2 text-sm font-semibold transition-colors ${
                     isSubscribed ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'
-                  }`}
-                >
-                  {isSubscribed ? dict.pricing.subscribed : dict.pricing.selectPlan}
-                </button>
-              </form>
-            </div>
-          </div>
-
-          {/* プレミアムプラン */}
-          <div className="border border-gray-200 rounded-lg shadow-sm divide-y divide-gray-200 bg-white">
-            <div className="p-6">
-              <h3 className="text-lg leading-6 font-medium text-gray-900">{dict.pricing.planPremium}</h3>
-              <p className="mt-8">
-                <span className="text-4xl font-extrabold text-gray-900">{dict.pricing.pricePremium}</span>
-                <span className="text-base font-medium text-gray-500">{dict.pricing.perMonth}</span>
-              </p>
-              <form action="/api/checkout" method="POST" className="mt-8">
-                <input type="hidden" name="lang" value={lang} />
-                <input type="hidden" name="priceId" value={getPriceId('premium', lang) || ''} />
-                <button 
-                  type="submit" 
-                  disabled={isSubscribed}
-                  className={`w-full text-white rounded-md py-2 text-sm font-semibold transition-colors ${
-                    isSubscribed ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-800 hover:bg-gray-900'
                   }`}
                 >
                   {isSubscribed ? dict.pricing.subscribed : dict.pricing.selectPlan}

@@ -48,8 +48,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ lang
     }
 
     // 4. 合計キャパシティの計算 (基本枠 + チケット枠)
-    const planLimits: Record<string, number> = { light: 10, standard: 30, premium: 1000 };
-    const baseLimit = subscription ? (planLimits[subscription.plan_type] || 0) : 0;
+    const baseLimit = subscription ? 25 : 0;
     const totalCapacity = baseLimit + totalTickets;
 
     // ビデオデータ等の取得 (既存ロジック)
@@ -93,15 +92,6 @@ export default async function DashboardPage({ params }: { params: Promise<{ lang
     const progress = totalCount > 0 ? Math.round((viewedCount / totalCount) * 100) : 0
     return { section, totalCount, viewedCount, progress }
   })
-
-  const getPlanName = (planType: string) => {
-    switch (planType) {
-      case 'light': return dict.dashboard.planLight
-      case 'standard': return dict.dashboard.planStandard
-      case 'premium': return dict.dashboard.planPremium
-      default: return dict.dashboard.planNone
-    }
-  }
 
   const VideoCard = ({ video, label }: { video: Video, label?: string }) => {
     const isViewed = viewedIds.has(video.vimeo_id)
@@ -155,7 +145,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ lang
             {subscription ? (
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <p className="text-2xl font-extrabold text-blue-900 mb-1">{getPlanName(subscription.plan_type)}</p>
+                  <p className="text-2xl font-extrabold text-blue-900 mb-1">{dict.dashboard.planStandard}</p>
                   <p className="text-sm text-blue-700">
                     {dict.dashboard.renewalDate}{new Date(subscription.current_period_end).toLocaleDateString(lang === 'ja' ? 'ja-JP' : 'en-US')}
                   </p>
@@ -163,20 +153,18 @@ export default async function DashboardPage({ params }: { params: Promise<{ lang
 
                 {/* ★進捗インジケーターボックス */}
                   <div className="bg-white/80 px-5 py-3 rounded-xl border border-blue-100 shadow-sm min-w-50">
-                    <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest mb-1">Annual Usage</p>
+                    <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest mb-1">Monthly Usage</p>
                     <div className="flex items-baseline gap-1.5">
                       <span className="text-3xl font-black text-gray-900">{watchedCount}</span>
-                      <span className="text-sm font-bold text-gray-400">/ {subscription.plan_type === 'premium' ? '∞' : totalCapacity}</span>
+                      <span className="text-sm font-bold text-gray-400">/ {totalCapacity}</span>
                       <span className="text-xs font-bold text-gray-500 ml-1">本</span>
-                    </div>
-                    {subscription.plan_type !== 'premium' && (
+                      </div>
                       <div className="w-full bg-gray-200 h-2 rounded-full mt-2 overflow-hidden">
                         <div 
                           className="bg-blue-600 h-full transition-all duration-500" 
                           style={{ width: `${Math.min((watchedCount / totalCapacity) * 100, 100)}%` }}
                         ></div>
                       </div>
-                    )}
                   </div>
 
                 {/* 修正後 */}

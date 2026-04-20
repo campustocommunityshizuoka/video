@@ -55,8 +55,8 @@ export async function POST(req: Request) {
         // INSERT実行
         const { data, error } = await supabaseAdmin.from('video_credits').insert({
           user_id: userId,
-          amount: 10,
-          remaining: 10,
+          amount: 25,
+          remaining: 25,
           expires_at: expiresAt.toISOString(),
         }).select();
 

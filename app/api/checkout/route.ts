@@ -40,8 +40,7 @@ export async function POST(request: Request) {
 
       // 2. 有効な追加チケットの残数を合計
       if (isAddOn && subscription) {
-      const planLimits: Record<string, number> = { light: 10, standard: 30, premium: 1000 };
-      const baseLimit = planLimits[subscription.plan_type] || 0;
+      const baseLimit = 25;
 
       // 有効なチケットの残数を取得
       const { data: credits } = await supabase
