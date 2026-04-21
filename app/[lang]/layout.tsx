@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import "../globals.css";
+//@ts-ignore
+import "../app/globals.css";
 import { getDictionary } from '@/utils/get-dictionary';
 
 const geistSans = Geist({
@@ -22,6 +23,20 @@ export async function generateMetadata({ params }: { params: Promise<{ lang: str
   return {
     title: dict.metadata.title,
     description: dict.metadata.description,
+
+    icons: {
+      icon: '/icon.png',
+      apple: '/apple-icon.png',
+    },
+    openGraph: {
+      images: [
+        {
+          url: '/opengraph-image.png',
+          width: 1200,
+          height: 630,
+        }
+      ],
+    }
   };
 }
 

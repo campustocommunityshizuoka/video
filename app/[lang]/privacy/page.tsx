@@ -2,6 +2,8 @@
 import { getDictionary } from '@/utils/get-dictionary'
 import Link from 'next/link'
 
+export const runtime = 'edge';
+
 export default async function TermsPage({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }) {
   const { lang } = await params;
   const dict = await getDictionary(lang);
