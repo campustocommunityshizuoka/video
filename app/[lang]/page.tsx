@@ -150,18 +150,28 @@ export default async function HomePage({ params }: { params: Promise<{ lang: 'ja
         </section>
       </main>
 
-      {/* フッター */}
+      {/* フッターの修正案 */}
       <footer className="bg-gray-50 py-12 border-t border-gray-200">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-gray-400 rounded-md flex items-center justify-center">
-              <span className="text-white font-bold text-xs leading-none">あ</span>
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-8">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 bg-gray-400 rounded-md flex items-center justify-center">
+                <span className="text-white font-bold text-xs">あ</span>
+              </div>
+              <span className="text-lg font-bold text-gray-600">{dict.home.title}</span>
             </div>
-            <span className="text-lg font-bold text-gray-600">{dict.home.title}</span>
+            
+            {/* 法的ページへのリンクを追加 */}
+            <div className="flex flex-wrap justify-center gap-6 text-sm text-gray-500">
+              <Link href={`/${lang}/terms`} className="hover:text-blue-600">Terms of Service</Link>
+              <Link href={`/${lang}/privacy`} className="hover:text-blue-600">Privacy Policy</Link>
+              <Link href={`/${lang}/legal`} className="hover:text-blue-600">Legal Notice (Act on Specified Commercial Transactions)</Link>
+            </div>
+
+            <p className="text-gray-400 text-sm">
+              © {new Date().getFullYear()} {dict.home.footerRights}
+            </p>
           </div>
-          <p className="text-gray-400 text-sm">
-            © {new Date().getFullYear()} {dict.home.footerRights}
-          </p>
         </div>
       </footer>
 

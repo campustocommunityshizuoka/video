@@ -64,7 +64,8 @@
     "backToLogin": "Back to Login",
     "newPasswordLabel": "New Password",
     "rateLimitError": "Email sending limit reached. For security reasons, please wait a while before trying again.",
-    "generalError": "An error occurred. Please check your email address and try again."
+    "generalError": "An error occurred. Please check your email address and try again.",
+    "agreeTerms": "I agree to the Terms of Service and Privacy Policy"
   },
   "dashboard": {
     "title": "Learning Dashboard",

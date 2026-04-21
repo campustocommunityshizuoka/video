@@ -56,11 +56,34 @@ export default async function SignupPage({
           showText={dict.auth.showPassword}
           hideText={dict.auth.hidePassword}
         />
+
+        <div className="flex items-start gap-3 mt-4">
+          <input
+            type="checkbox"
+            id="agree"
+            required
+            className="mt-1 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+          />
+          <label htmlFor="agree" className="text-xs text-gray-600 leading-normal">
+            {dict.auth.agreeTerms} / {dict.auth.agreeTerms}
+            <div className="mt-1">
+              <Link href={`/${lang}/terms`} className="text-blue-600 hover:underline">Terms</Link>
+              {' / '}
+              <Link href={`/${lang}/privacy`} className="text-blue-600 hover:underline">Privacy</Link>
+            </div>
+          </label>
+        </div>
         
         <div className="flex flex-col gap-2 mt-6">
           <button type="submit" className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors font-medium">
             {dict.auth.signupButton}
           </button>
+        </div>
+
+        <div className="mt-4 text-center">
+          <p className="text-[10px] text-gray-400">
+            By logging in, you agree to our Terms of Service and Privacy Policy.
+          </p>
         </div>
 
         <div className="mt-4 text-center text-sm text-gray-600 border-t border-gray-100 pt-4">
