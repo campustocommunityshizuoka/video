@@ -368,23 +368,6 @@ export async function POST(request: Request) {
 }
 </file>
 
-<file path="app/api/auth/signout/route.ts">
-import { NextResponse } from 'next/server'
-import { createClient } from '@/utils/supabase/server'
-
-export const runtime = 'edge';
-
-export async function POST(request: Request) {
-  const formData = await request.formData()
-  const currentLang = formData.get('lang') as string || 'ja'
-
-  const supabaseClient = await createClient()
-  await supabaseClient.auth.signOut()
-
-  return NextResponse.redirect(new URL(`/${currentLang}/login`, request.url), 303)
-}
-</file>
-
 <file path="app/api/auth/signup/route.ts">
 import { NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
@@ -770,6 +753,27 @@ export async function createClient() {
 }
 </file>
 
+<file path="app/api/auth/signout/route.ts">
+import { NextResponse } from 'next/server'
+import { createClient } from '@/utils/supabase/server'
+
+export const runtime = 'edge';
+
+export async function POST(request: Request) {
+  const formData = await request.formData()
+  const currentLang = formData.get('lang') as string || 'ja'
+
+  const supabaseClient = await createClient()
+  await supabaseClient.auth.signOut()
+
+  const response = NextResponse.redirect(new URL(`/${currentLang}/login`, request.url), 303)
+  
+  response.cookies.delete('device_session_id')
+
+  return response
+}
+</file>
+
 <file path="app/components/PasswordInput.tsx">
 'use client'
 
@@ -1119,171 +1123,6 @@ export default async function PrivacyPage({ params }: { params: Promise<{ lang: 
 }
 </file>
 
-<file path="app/[lang]/section/[id]/page.tsx">
-import { createClient } from '@/utils/supabase/server'
-import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import { getDictionary } from '@/utils/get-dictionary'
-import LanguageSwitcher from '@/app/components/LanguageSwitcher'
-
-export const runtime = 'edge';
-
-export default async function SectionPage({ 
-  params 
-}: { 
-  params: Promise<{ lang: 'ja' | 'en', id: string }> 
-}) {
-  const { lang, id: sectionId } = await params
-  const dict = await getDictionary(lang)
-
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect(`/${lang}/login`)
-
-  const { data: videos } = await supabase
-    .from('videos').select('*').like('title', `${sectionId}-%`)
-
-  const sortedVideos = videos?.sort((a, b) => {
-    const aNum = parseInt(a.title.match(/-(\d+)/)?.[1] || '0')
-    const bNum = parseInt(b.title.match(/-(\d+)/)?.[1] || '0')
-    return aNum - bNum
-  }) || []
-
-  const { data: history } = await supabase
-    .from('viewing_history').select('vimeo_video_id').eq('user_id', user.id)
-  
-  const viewedIds = new Set(history?.map(h => h.vimeo_video_id) || [])
-
-  return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-8 relative">
-      <div className="absolute top-6 right-6">
-        <LanguageSwitcher currentLang={lang} />
-      </div>
-
-      <div className="max-w-6xl mx-auto mt-8">
-        <div className="mb-8">
-          <Link href={`/${lang}/dashboard`} className="text-blue-600 hover:underline text-sm mb-4 inline-block">
-            {dict.section.backToDashboard}
-          </Link>
-          <h1 className="text-2xl font-bold text-gray-800">
-            {dict.section.title.replace('{id}', sectionId)}
-          </h1>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {sortedVideos.map((video) => {
-            const isViewed = viewedIds.has(video.vimeo_id)
-            return (
-              <div key={video.id} className="bg-white rounded-lg border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">
-                <div className="aspect-video bg-gray-100 flex items-center justify-center relative">
-                  {video.thumbnail_url ? (
-                    <img src={video.thumbnail_url} alt={video.title} className="object-cover w-full h-full" />
-                  ) : (
-                    <span className="text-gray-400 font-medium">Video</span>
-                  )}
-                  {isViewed && (
-                    <div className="absolute top-2 right-2 bg-green-500 text-white text-xs px-2 py-1 rounded shadow-sm font-bold">
-                      {dict.section.viewed}
-                    </div>
-                  )}
-                </div>
-                <div className="p-4 flex flex-col justify-between">
-                  <h3 className="font-bold text-gray-900 mb-4">{video.title}</h3>
-                  <Link href={`/${lang}/video/${video.vimeo_id}`} className={`block w-full text-center px-4 py-2 font-medium text-sm rounded-md transition-colors ${
-                    isViewed ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white'
-                  }`}>
-                    {isViewed ? dict.section.watchAgain : dict.section.watch}
-                  </Link>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-
-      // ページの一番下に追加
-      <footer className="mt-16 py-8 border-t border-gray-200">
-        <div className="flex flex-col md:flex-row justify-center items-center gap-6 text-[11px] text-gray-400">
-          <Link href={`/${lang}/terms`} className="hover:text-blue-600 transition-colors">Terms of Service</Link>
-          <Link href={`/${lang}/privacy`} className="hover:text-blue-600 transition-colors">Privacy Policy</Link>
-          <Link href={`/${lang}/legal`} className="hover:text-blue-600 transition-colors">Legal Notice</Link>
-          <span>© {new Date().getFullYear()} Nihongo Learning</span>
-        </div>
-      </footer>
-      
-    </div>
-  )
-}
-</file>
-
-<file path="app/[lang]/terms/page.tsx">
-import Link from 'next/link'
-
-export const runtime = 'edge';
-
-export default async function TermsPage({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }) {
-  const { lang } = await params;
-
-  return (
-    <div className="min-h-screen bg-gray-50 py-16 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-3xl mx-auto bg-white p-8 md:p-12 rounded-xl shadow-sm border border-gray-100">
-        <Link href={`/${lang}`} className="text-blue-600 hover:underline mb-8 inline-block font-medium">← Back to Home</Link>
-        
-        <h1 className="text-2xl md:text-3xl font-bold mb-8 text-gray-900 border-b pb-4">
-          Terms of Service<br/>
-          <span className="text-lg text-gray-500 font-normal mt-2 block">利用規約</span>
-        </h1>
-        
-        <div className="space-y-8 text-gray-700 leading-relaxed">
-          <section>
-            <h3 className="text-xl font-bold text-gray-900 mb-3">1. Acceptance of Terms / 規約の同意</h3>
-            <p>By accessing or using Nihongo Learning (the "Service"), you agree to be bound by these Terms of Service. If you disagree with any part of the terms, then you may not access the Service.</p>
-            <p className="text-sm text-gray-500 mt-2">Nihongo Learning（以下「本サービス」）を利用することにより、お客様は本規約に同意したものとみなされます。同意いただけない場合は、本サービスをご利用いただけません。</p>
-          </section>
-
-          <section>
-            <h3 className="text-xl font-bold text-gray-900 mb-3">2. Subscription and Tickets / サブスクリプションとチケット</h3>
-            <p>The Service is provided on a subscription basis ($35.00/month for up to 25 video views). Additional video views can be purchased via Tickets ($35.00 for 25 views). Unused base capacity resets at the end of each billing cycle. Purchased tickets do not expire as long as the account is active, up to a maximum holding limit of 100 tickets.</p>
-            <p className="text-sm text-gray-500 mt-2">本サービスは月額制（月額35ドル/月間25本まで視聴可能）で提供されます。追加の視聴枠はチケット（35ドル/25本）にて購入可能です。月額プランの未使用の視聴枠は翌月に繰り越されません。購入したチケットはアカウントが有効な限り無期限で利用可能ですが、最大100本分までしかストックできません。</p>
-          </section>
-
-          <section>
-            <h3 className="text-xl font-bold text-gray-900 mb-3">3. Prohibited Actions / 禁止事項</h3>
-            <p>You agree not to engage in any of the following activities:</p>
-            <ul className="list-disc pl-5 mt-2 space-y-1">
-              <li>Sharing your account credentials with others (Account sharing).</li>
-              <li>Downloading, recording, reproducing, or redistributing any video content provided by the Service.</li>
-              <li>Attempting to bypass the viewing limit mechanisms.</li>
-            </ul>
-            <p className="mt-2 font-medium text-red-600">We reserve the right to immediately suspend or terminate accounts that violate these rules without any refund.</p>
-            
-            <div className="text-sm text-gray-500 mt-3 p-3 bg-gray-50 rounded">
-              お客様は以下の行為を行わないことに同意します。<br/>
-              ・アカウント情報を他者と共有し、複数人で使い回す行為。<br/>
-              ・本サービスが提供する動画コンテンツのダウンロード、録画、複製、無断転載。<br/>
-              ・視聴制限のシステムを不正に回避する行為。<br/>
-              これらの違反が発覚した場合、運営者は予告なくアカウントを即時停止・削除する権利を有し、いかなる返金も行いません。
-            </div>
-          </section>
-
-          <section>
-            <h3 className="text-xl font-bold text-gray-900 mb-3">4. Intellectual Property / 知的財産権</h3>
-            <p>All content, including videos, text, and logos, is the exclusive property of Nihongo Learning. You are granted a limited, non-exclusive, non-transferable license to access and view the content for personal, non-commercial educational purposes.</p>
-            <p className="text-sm text-gray-500 mt-2">動画、テキスト、ロゴを含むすべてのコンテンツの著作権および知的財産権は、Nihongo Learningに帰属します。お客様には、個人的かつ非営利の学習目的に限り、コンテンツにアクセスし視聴する限定的かつ譲渡不可の権利が付与されます。</p>
-          </section>
-
-          <section>
-            <h3 className="text-xl font-bold text-gray-900 mb-3">5. Limitation of Liability / 免責事項</h3>
-            <p>The Service is provided "as is". We do not guarantee continuous, uninterrupted access to the Service. We are not liable for any learning outcomes, damages, or losses resulting from the use or inability to use the Service.</p>
-            <p className="text-sm text-gray-500 mt-2">本サービスは「現状有姿」で提供されます。運営者は、サービスの中断がないことを保証しません。また、本サービスの利用または利用不能から生じる学習結果、いかなる損害についても責任を負いません。</p>
-          </section>
-        </div>
-      </div>
-    </div>
-  )
-}
-</file>
-
 <file path="app/api/auth/callback/route.ts">
 import { NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
@@ -1497,92 +1336,6 @@ const eslintConfig = defineConfig([
 export default eslintConfig;
 </file>
 
-<file path="middleware.ts">
-import { createServerClient } from '@supabase/ssr'
-import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
-
-export async function middleware(request: NextRequest) {
-  // 1. レスポンスオブジェクトの初期化
-  let response = NextResponse.next({
-    request: { headers: request.headers },
-  })
-
-  // 2. Supabaseクライアントの初期化 (Server Component/Middleware用)
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll: () => request.cookies.getAll(),
-        setAll: (cookiesToSet) => {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          response = NextResponse.next({ request })
-          cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options))
-        },
-      },
-    }
-  )
-
-  // セッション情報を取得
-  const { data: { user } } = await supabase.auth.getUser() // サーバー側で認証を検証
-  const { data: { session } } = await supabase.auth.getSession() // トークン取得用
-  const { pathname } = request.nextUrl
-
-  // ----------------------------------------------------------------
-  // A. 1アカウント1ログイン制限ロジック (ダッシュボードと動画ページが対象)
-  // ----------------------------------------------------------------
-  if (session && (pathname.includes('/dashboard') || pathname.includes('/video'))) {
-    // データベースから最新のセッションIDを取得
-    const { data: sub } = await supabase
-      .from('subscriptions')
-      .select(' current_session_id')
-      .eq('user_id', session.user.id)
-      .maybeSingle();
-
-    // ライト・スタンダードプランのみ判定
-    if (sub) {
-      // ★修正：アクセストークンではなく、端末にセットしたCookieのIDを確認
-      const currentTokenId = request.cookies.get('device_session_id')?.value;
-      
-      // DBのIDとCookieのIDが一致しない＝別の端末で新しくログインされた
-      if (sub.current_session_id && sub.current_session_id !== currentTokenId) {
-        // 強制ログアウト処理
-        await supabase.auth.signOut();
-        response.cookies.delete('device_session_id'); // Cookieのお掃除
-        const lang = pathname.startsWith('/en') ? 'en' : 'ja';
-        const redirectUrl = new URL(`/${lang}/login?message=other_device`, request.url);
-        return NextResponse.redirect(redirectUrl);
-      }
-    }
-  }
-
-  // ----------------------------------------------------------------
-  // B. 言語リダイレクトロジック (既存機能)
-  // ----------------------------------------------------------------
-  const locales = ['ja', 'en']
-  const defaultLocale = 'ja'
-  const pathnameHasLocale = locales.some(
-    (locale) => pathname.startsWith(`/${locale}/`) || pathname === `/${locale}`
-  )
-
-  if (!pathnameHasLocale) {
-    // ロケールが含まれていない場合は、デフォルト言語（/ja）を付与
-    const url = request.nextUrl.clone()
-    url.pathname = `/${defaultLocale}${pathname}`
-    return NextResponse.redirect(url)
-  }
-
-  return response
-}
-
-export const config = {
-  matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
-  ],
-}
-</file>
-
 <file path="next.config.ts">
 // next.config.ts
 import type { NextConfig } from "next";
@@ -1659,6 +1412,170 @@ export default async function RootLayout({
       </body>
     </html>
   );
+}
+</file>
+
+<file path="app/[lang]/section/[id]/page.tsx">
+import { createClient } from '@/utils/supabase/server'
+import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import { getDictionary } from '@/utils/get-dictionary'
+import LanguageSwitcher from '@/app/components/LanguageSwitcher'
+
+export const runtime = 'edge';
+
+export default async function SectionPage({ 
+  params 
+}: { 
+  params: Promise<{ lang: 'ja' | 'en', id: string }> 
+}) {
+  const { lang, id: sectionId } = await params
+  const dict = await getDictionary(lang)
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect(`/${lang}/login`)
+
+  const { data: videos } = await supabase
+    .from('videos').select('*').like('title', `${sectionId}-%`)
+
+  const sortedVideos = videos?.sort((a, b) => {
+    const aNum = parseInt(a.title.match(/-(\d+)/)?.[1] || '0')
+    const bNum = parseInt(b.title.match(/-(\d+)/)?.[1] || '0')
+    return aNum - bNum
+  }) || []
+
+  const { data: history } = await supabase
+    .from('viewing_history').select('vimeo_video_id').eq('user_id', user.id)
+  
+  const viewedIds = new Set(history?.map(h => h.vimeo_video_id) || [])
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-4 md:p-8 relative">
+      <div className="absolute top-6 right-6">
+        <LanguageSwitcher currentLang={lang} />
+      </div>
+
+      <div className="max-w-6xl mx-auto mt-8">
+        <div className="mb-8">
+          <Link href={`/${lang}/dashboard`} className="text-blue-600 hover:underline text-sm mb-4 inline-block">
+            {dict.section.backToDashboard}
+          </Link>
+          <h1 className="text-2xl font-bold text-gray-800">
+            {dict.section.title.replace('{id}', sectionId)}
+          </h1>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {sortedVideos.map((video) => {
+            const isViewed = viewedIds.has(video.vimeo_id)
+            return (
+              <div key={video.id} className="bg-white rounded-lg border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">
+                <div className="aspect-video bg-gray-100 flex items-center justify-center relative">
+                  {video.thumbnail_url ? (
+                    <img src={video.thumbnail_url} alt={video.title} className="object-cover w-full h-full" />
+                  ) : (
+                    <span className="text-gray-400 font-medium">Video</span>
+                  )}
+                  {isViewed && (
+                    <div className="absolute top-2 right-2 bg-green-500 text-white text-xs px-2 py-1 rounded shadow-sm font-bold">
+                      {dict.section.viewed}
+                    </div>
+                  )}
+                </div>
+                <div className="p-4 flex flex-col justify-between">
+                  <h3 className="font-bold text-gray-900 mb-4">{video.title}</h3>
+                  <Link href={`/${lang}/video/${video.vimeo_id}`} className={`block w-full text-center px-4 py-2 font-medium text-sm rounded-md transition-colors ${
+                    isViewed ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white'
+                  }`}>
+                    {isViewed ? dict.section.watchAgain : dict.section.watch}
+                  </Link>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      <footer className="mt-16 py-8 border-t border-gray-200">
+        <div className="flex flex-col md:flex-row justify-center items-center gap-6 text-[11px] text-gray-400">
+          <Link href={`/${lang}/terms`} className="hover:text-blue-600 transition-colors">Terms of Service</Link>
+          <Link href={`/${lang}/privacy`} className="hover:text-blue-600 transition-colors">Privacy Policy</Link>
+          <Link href={`/${lang}/legal`} className="hover:text-blue-600 transition-colors">Legal Notice</Link>
+          <span>© {new Date().getFullYear()} Nihon Work Base</span>
+        </div>
+      </footer>
+      
+    </div>
+  )
+}
+</file>
+
+<file path="app/[lang]/terms/page.tsx">
+import Link from 'next/link'
+
+export const runtime = 'edge';
+
+export default async function TermsPage({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }) {
+  const { lang } = await params;
+
+  return (
+    <div className="min-h-screen bg-gray-50 py-16 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-3xl mx-auto bg-white p-8 md:p-12 rounded-xl shadow-sm border border-gray-100">
+        <Link href={`/${lang}`} className="text-blue-600 hover:underline mb-8 inline-block font-medium">← Back to Home</Link>
+        
+        <h1 className="text-2xl md:text-3xl font-bold mb-8 text-gray-900 border-b pb-4">
+          Terms of Service<br/>
+          <span className="text-lg text-gray-500 font-normal mt-2 block">利用規約</span>
+        </h1>
+        
+        <div className="space-y-8 text-gray-700 leading-relaxed">
+          <section>
+            <h3 className="text-xl font-bold text-gray-900 mb-3">1. Acceptance of Terms / 規約の同意</h3>
+            <p>By accessing or using Nihon Work Base (the "Service"), you agree to be bound by these Terms of Service. If you disagree with any part of the terms, then you may not access the Service.</p>
+            <p className="text-sm text-gray-500 mt-2">Nihon Work Base（以下「本サービス」）を利用することにより、お客様は本規約に同意したものとみなされます。同意いただけない場合は、本サービスをご利用いただけません。</p>
+          </section>
+
+          <section>
+            <h3 className="text-xl font-bold text-gray-900 mb-3">2. Subscription and Tickets / サブスクリプションとチケット</h3>
+            <p>The Service is provided on a subscription basis ($35.00/month for up to 25 video views). Additional video views can be purchased via Tickets ($35.00 for 25 views). Unused base capacity resets at the end of each billing cycle. Purchased tickets are valid for 30 days from the date of purchase.</p>
+            <p className="text-sm text-gray-500 mt-2">本サービスは月額制（月額35ドル/月間25本まで視聴可能）で提供されます。追加の視聴枠はチケット（35ドル/25本）にて購入可能です。月額プランの未使用の視聴枠は翌月に繰り越されません。購入した追加チケットの有効期限は、購入日から30日間です。</p>
+          </section>
+
+          <section>
+            <h3 className="text-xl font-bold text-gray-900 mb-3">3. Prohibited Actions / 禁止事項</h3>
+            <p>You agree not to engage in any of the following activities:</p>
+            <ul className="list-disc pl-5 mt-2 space-y-1">
+              <li>Sharing your account credentials with others (Account sharing).</li>
+              <li>Downloading, recording, reproducing, or redistributing any video content provided by the Service.</li>
+              <li>Attempting to bypass the viewing limit mechanisms.</li>
+            </ul>
+            <p className="mt-2 font-medium text-red-600">We reserve the right to immediately suspend or terminate accounts that violate these rules without any refund.</p>
+            
+            <div className="text-sm text-gray-500 mt-3 p-3 bg-gray-50 rounded">
+              お客様は以下の行為を行わないことに同意します。<br/>
+              ・アカウント情報を他者と共有し、複数人で使い回す行為。<br/>
+              ・本サービスが提供する動画コンテンツのダウンロード、録画、複製、無断転載。<br/>
+              ・視聴制限のシステムを不正に回避する行為。<br/>
+              これらの違反が発覚した場合、運営者は予告なくアカウントを即時停止・削除する権利を有し、いかなる返金も行いません。
+            </div>
+          </section>
+
+          <section>
+            <h3 className="text-xl font-bold text-gray-900 mb-3">4. Intellectual Property / 知的財産権</h3>
+            <p>All content, including videos, text, and logos, is the exclusive property of Nihon Work Base. You are granted a limited, non-exclusive, non-transferable license to access and view the content for personal, non-commercial educational purposes.</p>
+            <p className="text-sm text-gray-500 mt-2">動画、テキスト、ロゴを含むすべてのコンテンツの著作権および知的財産権は、Nihon Work Baseに帰属します。お客様には、個人的かつ非営利の学習目的に限り、コンテンツにアクセスし視聴する限定的かつ譲渡不可の権利が付与されます。</p>
+          </section>
+
+          <section>
+            <h3 className="text-xl font-bold text-gray-900 mb-3">5. Limitation of Liability / 免責事項</h3>
+            <p>The Service is provided "as is". We do not guarantee continuous, uninterrupted access to the Service. We are not liable for any learning outcomes, damages, or losses resulting from the use or inability to use the Service.</p>
+            <p className="text-sm text-gray-500 mt-2">本サービスは「現状有姿」で提供されます。運営者は、サービスの中断がないことを保証しません。また、本サービスの利用または利用不能から生じる学習結果、いかなる損害についても責任を負いません。</p>
+          </section>
+        </div>
+      </div>
+    </div>
+  )
 }
 </file>
 
@@ -1822,6 +1739,92 @@ export async function POST(request: Request) {
     console.error('Portal Error:', error)
     return NextResponse.redirect(new URL(`/${currentLang}/dashboard`, request.url), 303)
   }
+}
+</file>
+
+<file path="middleware.ts">
+import { createServerClient } from '@supabase/ssr'
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
+
+export async function middleware(request: NextRequest) {
+  // 1. レスポンスオブジェクトの初期化
+  let response = NextResponse.next({
+    request: { headers: request.headers },
+  })
+
+  // 2. Supabaseクライアントの初期化 (Server Component/Middleware用)
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => request.cookies.getAll(),
+        setAll: (cookiesToSet) => {
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+          response = NextResponse.next({ request })
+          cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options))
+        },
+      },
+    }
+  )
+
+  // セッション情報を取得
+  const { data: { user } } = await supabase.auth.getUser() // サーバー側で認証を検証
+  const { data: { session } } = await supabase.auth.getSession() // トークン取得用
+  const { pathname } = request.nextUrl
+
+  // ----------------------------------------------------------------
+  // A. 1アカウント1ログイン制限ロジック (ダッシュボードと動画ページが対象)
+  // ----------------------------------------------------------------
+  if (session && (pathname.includes('/dashboard') || pathname.includes('/video'))) {
+    // データベースから最新のセッションIDを取得
+    const { data: sub } = await supabase
+      .from('subscriptions')
+      .select('current_session_id')
+      .eq('user_id', session.user.id)
+      .maybeSingle();
+
+    // ライト・スタンダードプランのみ判定
+    if (sub) {
+      // ★修正：アクセストークンではなく、端末にセットしたCookieのIDを確認
+      const currentTokenId = request.cookies.get('device_session_id')?.value;
+      
+      // DBのIDとCookieのIDが一致しない＝別の端末で新しくログインされた
+      if (sub.current_session_id && sub.current_session_id !== currentTokenId) {
+        // 強制ログアウト処理
+        await supabase.auth.signOut();
+        response.cookies.delete('device_session_id'); // Cookieのお掃除
+        const lang = pathname.startsWith('/en') ? 'en' : 'ja';
+        const redirectUrl = new URL(`/${lang}/login?message=other_device`, request.url);
+        return NextResponse.redirect(redirectUrl);
+      }
+    }
+  }
+
+  // ----------------------------------------------------------------
+  // B. 言語リダイレクトロジック (既存機能)
+  // ----------------------------------------------------------------
+  const locales = ['ja', 'en']
+  const defaultLocale = 'ja'
+  const pathnameHasLocale = locales.some(
+    (locale) => pathname.startsWith(`/${locale}/`) || pathname === `/${locale}`
+  )
+
+  if (!pathnameHasLocale) {
+    // ロケールが含まれていない場合は、デフォルト言語（/ja）を付与
+    const url = request.nextUrl.clone()
+    url.pathname = `/${defaultLocale}${pathname}`
+    return NextResponse.redirect(url)
+  }
+
+  return response
+}
+
+export const config = {
+  matcher: [
+    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+  ],
 }
 </file>
 
@@ -2176,279 +2179,11 @@ export default async function VideoPage({
         <Link href={`/${lang}/terms`} className="hover:text-blue-600 transition-colors">Terms of Service</Link>
         <Link href={`/${lang}/privacy`} className="hover:text-blue-600 transition-colors">Privacy Policy</Link>
         <Link href={`/${lang}/legal`} className="hover:text-blue-600 transition-colors">Legal Notice</Link>
-        <span>© {new Date().getFullYear()} Nihongo Learning</span>
+        <span>© {new Date().getFullYear()} Nihon Work Base</span>
       </div>
     </footer>
     </div>
   )
-}
-</file>
-
-<file path="dictionaries/en.json">
-{
-  "metadata": {
-    "title": "Nihongo Learning | Japanese Learning Platform",
-    "description": "Unlimited access to over 100 high-quality video lessons. Master Japanese at your own pace."
-  },
-  "home": {
-    "title": "Nihongo Learning",
-    "login": "Log in",
-    "startFree": "Start for Free",
-    "heroTitle1": "Master Japanese",
-    "heroTitle2": "at your own pace.",
-    "heroDescription": "Unlimited access to over 100 high-quality video lessons. Master everything from daily conversation to business Japanese with our structured curriculum.",
-    "startNow": "Start Learning Now",
-    "viewPricing": "View Pricing Plans",
-    "reasonsTitle": "3 Reasons to Choose Us",
-    "reasonsDesc": "We provide the optimal environment for learning Japanese efficiently.",
-    "feature1Title": "High-Quality Video Lessons",
-    "feature1Desc": "Easy-to-understand explanations by professional Japanese teachers. Watch them anytime, anywhere, as many times as you like.",
-    "feature2Title": "Track Your Progress",
-    "feature2Desc": "Visualize your learning achievement for each section with percentages. Keep your motivation high as you learn.",
-    "feature3Title": "Flexible Pricing Plans",
-    "feature3Desc": "We offer 3 plans to suit your learning pace, from a Light plan to an unlimited Premium plan.",
-    "pricingTitle": "Simple Pricing",
-    "pricingDesc": "Registration is free. Create an account first.",
-    "planLight": "Light",
-    "planStandard": "Standard",
-    "planPremium": "Premium",
-    "perMonth": " / month",
-    "mostPopular": "Most Popular",
-    "standardFeature1": "Watch up to 25 videos per month",
-    "featureProgress": "Progress tracking",
-    "featureAllAccess": "Access to 25 videos per month",
-    "ctaTitle": "Let's open the door to a new language.",
-    "ctaDesc": "Account creation takes only 1 minute.",
-    "createFreeAccount": "Create a Free Account",
-    "footerRights": "Nihongo Learning. All rights reserved."
-  },
-  "auth": {
-    "loginTitle": "Log In",
-    "signupTitle": "Create an Account",
-    "emailLabel": "Email Address",
-    "emailPlaceholder": "you@example.com",
-    "passwordLabel": "Password",
-    "passwordPlaceholder": "••••••••",
-    "loginButton": "Log In",
-    "signupButton": "Sign Up",
-    "toSignupText": "Don't have an account?",
-    "toSignupLink": "Sign up here",
-    "toLoginText": "Already have an account?",
-    "toLoginLink": "Log in here",
-    "loginError": "Failed to log in. Please check your email and password.",
-    "signupError": "Failed to sign up.",
-    "signupSuccess": "A confirmation email has been sent. Please click the link in the email to complete registration.",
-    "showPassword": "Show",
-    "hidePassword": "Hide",
-    "forgotPassword": "Forgot your password?",
-    "resetPasswordTitle": "Reset Password",
-    "resetPasswordDesc": "Enter your registered email address. We will send you a link to reset your password.",
-    "sendResetLink": "Send Reset Link",
-    "resetLinkSent": "A password reset email has been sent. Please click the link in the email to reset your password.",
-    "updatePasswordTitle": "Set New Password",
-    "updatePasswordButton": "Update Password",
-    "updatePasswordSuccess": "Your password has been updated. Redirecting to the dashboard...",
-    "backToLogin": "Back to Login",
-    "newPasswordLabel": "New Password",
-    "rateLimitError": "Email sending limit reached. For security reasons, please wait a while before trying again.",
-    "generalError": "An error occurred. Please check your email address and try again.",
-    "agreeTerms": "I agree to the Terms of Service and Privacy Policy"
-  },
-  "dashboard": {
-    "title": "Learning Dashboard",
-    "adminButton": "Admin Dashboard",
-    "logoutButton": "Log Out",
-    "welcome": "Welcome, ",
-    "honorific": "",
-    "subscriptionStatus": "Current Subscription Status",
-    "renewalDate": "Renewal Date: ",
-    "manageSubscription": "Manage Subscription",
-    "noSubscription": "No active subscription.",
-    "choosePlan": "Choose a Plan",
-    "planStandard": "Basic Plan (25 videos/mo)",
-    "planNone": "Unsubscribed",
-    "continueWatching": "Continue Watching",
-    "recentlyWatched": "Recently Watched",
-    "favorites": "Favorites",
-    "watch": "▶ Watch",
-    "courseList": "Course List",
-    "section": "Section ",
-    "videosCount": " videos",
-    "progress": "Progress: ",
-    "completed": " Completed",
-    "remainingTickets": "Extra Tickets: {count} remaining",
-    "buyTickets": "Buy 25 Extra Video Tickets ($35.00)",
-    "validTickets": "Valid Extra Tickets: {count}",
-    "ticketStockLimit": "* Maximum stock is 100 tickets."
-  },
-  "section": {
-    "backToDashboard": "← Back to Dashboard",
-    "title": "Videos for Section {id}",
-    "viewed": "✓ Viewed",
-    "watchAgain": "Watch Again",
-    "watch": "Watch"
-  },
-  "video": {
-    "requireSubscription": "A subscription plan is required to watch videos.",
-    "toPricing": "Go to Pricing",
-    "limitReachedTitle": "Monthly viewing limit reached ({limit} videos)",
-    "limitMessage": "To watch more videos, please wait for next year's renewal or consider upgrading your plan or purchases additional Tickets.",
-    "backToDashboard": "← Back to Dashboard",
-    "playerTitle": "Video Player",
-    "currentPlan": "Current Plan",
-    "yearlyWatchCount": "Monthly Videos Watched",
-    "unlimited": "Unlimited",
-    "videosUnit": " videos",
-    "favoriteAdd": "Add to Favorites",
-    "favoriteRemove": "Remove Favorite",
-    "watchCompleted": "✓ Completed"
-  },
-  "pricing": {
-    "title": "Choose a Learning Plan",
-    "subtitle": "Select the plan that best fits your learning pace.",
-    "noticeTitle": "Notice",
-    "noticeMessage": "You are already subscribed to a plan. If you wish to cancel or change your current plan, please contact the administrator.",
-    "planStandard": "Standard Plan",
-    "priceStandard": "$35.00",
-    "perMonth": "/month",
-    "subscribed": "Subscribed",
-    "selectPlan": "Select Plan",
-    "alreadySubscribedError": "You are already subscribed to a plan. Additional purchases are not allowed."
-  }
-}
-</file>
-
-<file path="dictionaries/ja.json">
-{
-  "metadata": {
-    "title": "Nihongo Learning | 外国人のための日本語学習",
-    "description": "100本以上の高品質な授業動画が見放題。あなたのペースで確実な日本語力を身につけましょう。"
-  },
-  "home": {
-    "title": "Nihongo Learning",
-    "login": "ログイン",
-    "startFree": "無料ではじめる",
-    "heroTitle1": "あなたのペースで、",
-    "heroTitle2": "確実な日本語力を。",
-    "heroDescription": "100本以上の高品質な授業動画が見放題。体系化されたカリキュラムで、日常会話からビジネス日本語まで、最短ルートでマスターしましょう。",
-    "startNow": "今すぐ学習をスタート",
-    "viewPricing": "料金プランを見る",
-    "reasonsTitle": "選ばれる3つの理由",
-    "reasonsDesc": "効率的に日本語を習得するための、最適な環境が整っています。",
-    "feature1Title": "圧倒的な質の授業動画",
-    "feature1Desc": "プロの日本語教師による、わかりやすい解説動画。いつでもどこでも、何度でも見返すことができます。",
-    "feature2Title": "進捗がひと目でわかる",
-    "feature2Desc": "セクションごとの学習達成度をパーセンテージで可視化。モチベーションを維持しながら学習を進められます。",
-    "feature3Title": "選べる柔軟な料金プラン",
-    "feature3Desc": "あなたの学習ペースに合わせて、ライトから無制限のプレミアムまで、3つのプランをご用意しています。",
-    "pricingTitle": "シンプルな料金体系",
-    "pricingDesc": "登録は無料です。まずはアカウントを作成しましょう。",
-    "planLight": "ライト",
-    "planStandard": "スタンダード",
-    "planPremium": "プレミアム",
-    "perMonth": " / 月",
-    "mostPopular": "一番人気",
-    "featureProgress": "進捗管理機能",
-    "featureAllAccess": "月25本の視聴が可能",
-    "ctaTitle": "さあ、新しい言語の扉を開きましょう。",
-    "ctaDesc": "アカウント作成はわずか1分で完了します。",
-    "createFreeAccount": "無料でアカウントを作成する",
-    "footerRights": "Nihongo Learning. All rights reserved."
-  },
-  "auth": {
-    "loginTitle": "ログイン",
-    "signupTitle": "新規アカウント登録",
-    "emailLabel": "メールアドレス",
-    "emailPlaceholder": "you@example.com",
-    "passwordLabel": "パスワード",
-    "passwordPlaceholder": "••••••••",
-    "loginButton": "ログイン",
-    "signupButton": "登録する",
-    "toSignupText": "アカウントをお持ちでないですか？",
-    "toSignupLink": "新規登録はこちら",
-    "toLoginText": "すでにアカウントをお持ちですか？",
-    "toLoginLink": "ログインはこちら",
-    "loginError": "ログインに失敗しました。メールアドレスとパスワードをご確認ください。",
-    "signupError": "登録に失敗しました。",
-    "signupSuccess": "確認メールを送信しました。メール内のリンクをクリックして登録を完了してください。",
-    "showPassword": "表示",
-    "hidePassword": "隠す",
-    "forgotPassword": "パスワードをお忘れですか？",
-    "resetPasswordTitle": "パスワードの再設定",
-    "resetPasswordDesc": "登録したメールアドレスを入力してください。再設定用のリンクを送信します。",
-    "sendResetLink": "再設定リンクを送信する",
-    "resetLinkSent": "再設定用のメールを送信しました。メール内のリンクからパスワードを再設定してください。",
-    "updatePasswordTitle": "新しいパスワードの設定",
-    "updatePasswordButton": "パスワードを更新する",
-    "updatePasswordSuccess": "パスワードが更新されました。ダッシュボードへ移動します。",
-    "backToLogin": "ログイン画面に戻る",
-    "newPasswordLabel": "新しいパスワード",
-    "rateLimitError": "メール送信の上限に達しました。セキュリティのため、しばらく時間をおいてから再度お試しください。",
-    "generalError": "エラーが発生しました。メールアドレスをご確認の上、もう一度お試しください。",
-    "agreeTerms": "利用規約とプライバシーポリシーに同意します"
-  },
-  "dashboard": {
-    "title": "学習ダッシュボード",
-    "adminButton": "管理画面へ",
-    "logoutButton": "ログアウト",
-    "welcome": "ようこそ、",
-    "honorific": " さん",
-    "subscriptionStatus": "現在のご契約状況",
-    "renewalDate": "更新日: ",
-    "manageSubscription": "契約内容の確認・変更",
-    "noSubscription": "プラン未契約です。",
-    "choosePlan": "プランを選択する",
-    "planStandard": "基本プラン（月25本）",
-    "planNone": "未契約",
-    "continueWatching": "続きから見る",
-    "recentlyWatched": "最近視聴",
-    "favorites": "お気に入り",
-    "watch": "▶ 視聴",
-    "courseList": "学習コース一覧",
-    "section": "セクション ",
-    "videosCount": " 本",
-    "progress": "進捗: ",
-    "completed": " 完了",
-    "remainingTickets": "追加視聴枠：残り {count} 本",
-    "buyTickets": "動画視聴枠を 25本購入する ($35) ",
-    "validTickets": "有効な追加チケット: {count} 枚",
-    "ticketStockLimit": "※合計100本までストック可能です"
-  },
-  "section": {
-    "backToDashboard": "← ダッシュボードへ戻る",
-    "title": "セクション {id} の動画一覧",
-    "viewed": "✓ 視聴済み",
-    "watchAgain": "もう一度見る",
-    "watch": "視聴する"
-  },
-  "video": {
-    "requireSubscription": "動画を視聴するにはプランの契約が必要です。",
-    "toPricing": "プラン選択画面へ",
-    "limitReachedTitle": "今月の視聴上限（{limit}本）に達しました",
-    "limitMessage": "新しい動画を視聴するには、来月の更新をお待ちいただくか、プランの変更をご検討ください。",
-    "backToDashboard": "← ダッシュボードに戻る",
-    "playerTitle": "授業動画再生",
-    "currentPlan": "現在のプラン",
-    "yearlyWatchCount": "今月の視聴本数",
-    "videosUnit": " 本",
-    "favoriteAdd": "お気に入りに追加",
-    "favoriteRemove": "お気に入り解除",
-    "watchCompleted": "✓ 視聴完了",
-    "useTicket": "追加チケットを1枚使って視聴する",
-    "noTickets": "視聴枠がありません。チケットを購入してください。"
-  },
-  "pricing": {
-    "title": "学習プランを選択",
-    "subtitle": "あなたの学習ペースに合わせたプランをお選びください。",
-    "noticeTitle": "お知らせ",
-    "noticeMessage": "お客様はすでにプランをご契約中です。現在のプランの解約や変更をご希望の場合は、管理者までお問い合わせください。",
-    "planStandard": "スタンダードプラン",
-    "priceStandard": "$35.00",
-    "perMonth": "/月",
-    "subscribed": "契約済み",
-    "selectPlan": "プランを選択",
-    "alreadySubscribedError": "すでにプランを契約中のため、追加購入はできません"
-  }
 }
 </file>
 
@@ -2666,7 +2401,7 @@ export default async function PricingPage({ params }: { params: Promise<{ lang: 
           <Link href={`/${lang}/terms`} className="hover:text-blue-600 transition-colors">Terms of Service</Link>
           <Link href={`/${lang}/privacy`} className="hover:text-blue-600 transition-colors">Privacy Policy</Link>
           <Link href={`/${lang}/legal`} className="hover:text-blue-600 transition-colors">Legal Notice</Link>
-          <span>© {new Date().getFullYear()} Nihongo Learning</span>
+          <span>© {new Date().getFullYear()} Nihon Work Base</span>
         </div>
       </footer>
     </div>
@@ -2819,6 +2554,315 @@ export default async function UpdatePasswordPage({
 }
 </file>
 
+<file path="dictionaries/en.json">
+{
+  "metadata": {
+    "title": "Nihon Work Base | Japanese Learning Platform",
+    "description": "Unlimited access to over 100 high-quality video lessons. Master Japanese at your own pace."
+  },
+  "home": {
+    "title": "Nihon Work Base",
+    "login": "Log in",
+    "startFree": "Start for Free",
+    "heroTitle1": "Master Japanese",
+    "heroTitle2": "at your own pace.",
+    "heroDescription": "Unlimited access to over 100 high-quality video lessons. Master everything from daily conversation to business Japanese with our structured curriculum.",
+    "startNow": "Start Learning Now",
+    "viewPricing": "View Pricing Plans",
+    "reasonsTitle": "3 Reasons to Choose Us",
+    "reasonsDesc": "We provide the optimal environment for learning Japanese efficiently.",
+    "feature1Title": "High-Quality Video Lessons",
+    "feature1Desc": "Easy-to-understand explanations by professional Japanese teachers. Watch them anytime, anywhere, as many times as you like.",
+    "feature2Title": "Track Your Progress",
+    "feature2Desc": "Visualize your learning achievement for each section with percentages. Keep your motivation high as you learn.",
+    "feature3Title": "Simple & Transparent Pricing",
+    "feature3Desc": "A straightforward monthly plan with 25 video views, plus the flexibility to buy extra tickets whenever you need them.",
+    "pricingTitle": "Simple Pricing",
+    "pricingDesc": "Registration is free. Create an account first.",
+    "planStandard": "Standard",
+    "perMonth": " / month",
+    "mostPopular": "Most Popular",
+    "standardFeature1": "Watch up to 25 videos per month",
+    "featureProgress": "Progress tracking",
+    "featureAllAccess": "Access to 25 videos per month",
+    "ctaTitle": "Let's open the door to a new language.",
+    "ctaDesc": "Account creation takes only 1 minute.",
+    "createFreeAccount": "Create a Free Account",
+    "footerRights": "Nihon Work Base. All rights reserved."
+  },
+  "auth": {
+    "loginTitle": "Log In",
+    "signupTitle": "Create an Account",
+    "emailLabel": "Email Address",
+    "emailPlaceholder": "you@example.com",
+    "passwordLabel": "Password",
+    "passwordPlaceholder": "••••••••",
+    "loginButton": "Log In",
+    "signupButton": "Sign Up",
+    "toSignupText": "Don't have an account?",
+    "toSignupLink": "Sign up here",
+    "toLoginText": "Already have an account?",
+    "toLoginLink": "Log in here",
+    "loginError": "Failed to log in. Please check your email and password.",
+    "signupError": "Failed to sign up.",
+    "signupSuccess": "A confirmation email has been sent. Please click the link in the email to complete registration.",
+    "showPassword": "Show",
+    "hidePassword": "Hide",
+    "forgotPassword": "Forgot your password?",
+    "resetPasswordTitle": "Reset Password",
+    "resetPasswordDesc": "Enter your registered email address. We will send you a link to reset your password.",
+    "sendResetLink": "Send Reset Link",
+    "resetLinkSent": "A password reset email has been sent. Please click the link in the email to reset your password.",
+    "updatePasswordTitle": "Set New Password",
+    "updatePasswordButton": "Update Password",
+    "updatePasswordSuccess": "Your password has been updated. Redirecting to the dashboard...",
+    "backToLogin": "Back to Login",
+    "newPasswordLabel": "New Password",
+    "rateLimitError": "Email sending limit reached. For security reasons, please wait a while before trying again.",
+    "generalError": "An error occurred. Please check your email address and try again.",
+    "agreeTerms": "I agree to the Terms of Service and Privacy Policy"
+  },
+  "dashboard": {
+    "title": "Learning Dashboard",
+    "adminButton": "Admin Dashboard",
+    "logoutButton": "Log Out",
+    "welcome": "Welcome, ",
+    "honorific": "",
+    "subscriptionStatus": "Current Subscription Status",
+    "renewalDate": "Renewal Date: ",
+    "manageSubscription": "Manage Subscription",
+    "noSubscription": "No active subscription.",
+    "choosePlan": "Choose a Plan",
+    "planStandard": "Basic Plan (25 videos/mo)",
+    "planNone": "Unsubscribed",
+    "continueWatching": "Continue Watching",
+    "recentlyWatched": "Recently Watched",
+    "favorites": "Favorites",
+    "watch": "▶ Watch",
+    "courseList": "Course List",
+    "section": "Section ",
+    "videosCount": " videos",
+    "progress": "Progress: ",
+    "completed": " Completed",
+    "remainingTickets": "Extra Tickets: {count} remaining",
+    "buyTickets": "Buy 25 Extra Video Tickets ($35.00)",
+    "validTickets": "Valid Extra Tickets: {count}",
+    "ticketStockLimit": "* Maximum stock is 100 tickets."
+  },
+  "section": {
+    "backToDashboard": "← Back to Dashboard",
+    "title": "Videos for Section {id}",
+    "viewed": "✓ Viewed",
+    "watchAgain": "Watch Again",
+    "watch": "Watch"
+  },
+  "video": {
+    "requireSubscription": "A subscription plan is required to watch videos.",
+    "toPricing": "Go to Pricing",
+    "limitReachedTitle": "Monthly viewing limit reached ({limit} videos)",
+    "limitMessage": "To watch more videos, please wait for next year's renewal or consider upgrading your plan or purchases additional Tickets.",
+    "backToDashboard": "← Back to Dashboard",
+    "playerTitle": "Video Player",
+    "currentPlan": "Current Plan",
+    "yearlyWatchCount": "Monthly Videos Watched",
+    "unlimited": "Unlimited",
+    "videosUnit": " videos",
+    "favoriteAdd": "Add to Favorites",
+    "favoriteRemove": "Remove Favorite",
+    "watchCompleted": "✓ Completed"
+  },
+  "pricing": {
+    "title": "Choose a Learning Plan",
+    "subtitle": "Select the plan that best fits your learning pace.",
+    "noticeTitle": "Notice",
+    "noticeMessage": "You are already subscribed to a plan. If you wish to cancel or change your current plan, please contact the administrator.",
+    "planStandard": "Standard Plan",
+    "priceStandard": "$35.00",
+    "perMonth": "/month",
+    "subscribed": "Subscribed",
+    "selectPlan": "Select Plan",
+    "alreadySubscribedError": "You are already subscribed to a plan. Additional purchases are not allowed."
+  }
+}
+</file>
+
+<file path="dictionaries/ja.json">
+{
+  "metadata": {
+    "title": "Nihon Work Base | 日本でのリアルな立ち回りを学ぶ",
+    "description": "100本以上の高品質な授業動画が見放題。日本特有のルールやマナー、生活の知恵を身につけましょう。"
+  },
+  "home": {
+    "title": "Nihon Work Base",
+    "login": "ログイン",
+    "startFree": "無料ではじめる",
+    "heroTitle1": "語学だけじゃない、",
+    "heroTitle2": "日本での「リアルな立ち回り」を。",
+    "heroDescription": "100本以上の高品質な授業動画が見放題。体系化されたカリキュラムで、日常会話からビジネス日本語まで、最短ルートでマスターしましょう。",
+    "startNow": "今すぐ学習をスタート",
+    "viewPricing": "料金プランを見る",
+    "reasonsTitle": "選ばれる3つの理由",
+    "reasonsDesc": "日本での生活を安全に、そして楽しくスタートさせるための環境が整っています。",
+    "feature1Title": "教科書には載っていないリアル",
+    "feature1Desc": "基本中の基本である挨拶から「なぜ日本人はこうするの？」といった文化の違いまで、本当に必要な知識をお届けします。",
+    "feature2Title": "進捗がひと目でわかる",
+    "feature2Desc": "セクションごとの学習達成度をパーセンテージで可視化。モチベーションを維持しながら学習を進められます。",
+    "feature3Title": "シンプルで無駄のない料金体系",
+    "feature3Desc": "月額プラン（25本視聴可能）に加え、必要な時にいつでも追加チケットを購入できる柔軟なシステムです。",
+    "pricingTitle": "シンプルな料金体系",
+    "pricingDesc": "登録は無料です。まずはアカウントを作成しましょう。",
+    "planStandard": "スタンダード",
+    "perMonth": " / 月",
+    "mostPopular": "一番人気",
+    "featureProgress": "進捗管理機能",
+    "featureAllAccess": "月25本の視聴が可能",
+    "ctaTitle": "日本での新生活、不安を自信に変えましょう。",
+    "ctaDesc": "アカウント作成はわずか1分で完了します。",
+    "createFreeAccount": "無料でアカウントを作成する",
+    "footerRights": "Nihon Work Base. All rights reserved."
+  },
+  "auth": {
+    "loginTitle": "ログイン",
+    "signupTitle": "新規アカウント登録",
+    "emailLabel": "メールアドレス",
+    "emailPlaceholder": "you@example.com",
+    "passwordLabel": "パスワード",
+    "passwordPlaceholder": "••••••••",
+    "loginButton": "ログイン",
+    "signupButton": "登録する",
+    "toSignupText": "アカウントをお持ちでないですか？",
+    "toSignupLink": "新規登録はこちら",
+    "toLoginText": "すでにアカウントをお持ちですか？",
+    "toLoginLink": "ログインはこちら",
+    "loginError": "ログインに失敗しました。メールアドレスとパスワードをご確認ください。",
+    "signupError": "登録に失敗しました。",
+    "signupSuccess": "確認メールを送信しました。メール内のリンクをクリックして登録を完了してください。",
+    "showPassword": "表示",
+    "hidePassword": "隠す",
+    "forgotPassword": "パスワードをお忘れですか？",
+    "resetPasswordTitle": "パスワードの再設定",
+    "resetPasswordDesc": "登録したメールアドレスを入力してください。再設定用のリンクを送信します。",
+    "sendResetLink": "再設定リンクを送信する",
+    "resetLinkSent": "再設定用のメールを送信しました。メール内のリンクからパスワードを再設定してください。",
+    "updatePasswordTitle": "新しいパスワードの設定",
+    "updatePasswordButton": "パスワードを更新する",
+    "updatePasswordSuccess": "パスワードが更新されました。ダッシュボードへ移動します。",
+    "backToLogin": "ログイン画面に戻る",
+    "newPasswordLabel": "新しいパスワード",
+    "rateLimitError": "メール送信の上限に達しました。セキュリティのため、しばらく時間をおいてから再度お試しください。",
+    "generalError": "エラーが発生しました。メールアドレスをご確認の上、もう一度お試しください。",
+    "agreeTerms": "利用規約とプライバシーポリシーに同意します"
+  },
+  "dashboard": {
+    "title": "学習ダッシュボード",
+    "adminButton": "管理画面へ",
+    "logoutButton": "ログアウト",
+    "welcome": "ようこそ、",
+    "honorific": " さん",
+    "subscriptionStatus": "現在のご契約状況",
+    "renewalDate": "更新日: ",
+    "manageSubscription": "契約内容の確認・変更",
+    "noSubscription": "プラン未契約です。",
+    "choosePlan": "プランを選択する",
+    "planStandard": "基本プラン（月25本）",
+    "planNone": "未契約",
+    "continueWatching": "続きから見る",
+    "recentlyWatched": "最近視聴",
+    "favorites": "お気に入り",
+    "watch": "▶ 視聴",
+    "courseList": "学習コース一覧",
+    "section": "セクション ",
+    "videosCount": " 本",
+    "progress": "進捗: ",
+    "completed": " 完了",
+    "remainingTickets": "追加視聴枠：残り {count} 本",
+    "buyTickets": "動画視聴枠を 25本購入する ($35) ",
+    "validTickets": "有効な追加チケット: {count} 枚",
+    "ticketStockLimit": "※合計100本までストック可能です"
+  },
+  "section": {
+    "backToDashboard": "← ダッシュボードへ戻る",
+    "title": "セクション {id} の動画一覧",
+    "viewed": "✓ 視聴済み",
+    "watchAgain": "もう一度見る",
+    "watch": "視聴する"
+  },
+  "video": {
+    "requireSubscription": "動画を視聴するにはプランの契約が必要です。",
+    "toPricing": "プラン選択画面へ",
+    "limitReachedTitle": "今月の視聴上限（{limit}本）に達しました",
+    "limitMessage": "新しい動画を視聴するには、来月の更新をお待ちいただくか、プランの変更をご検討ください。",
+    "backToDashboard": "← ダッシュボードに戻る",
+    "playerTitle": "授業動画再生",
+    "currentPlan": "現在のプラン",
+    "yearlyWatchCount": "今月の視聴本数",
+    "videosUnit": " 本",
+    "favoriteAdd": "お気に入りに追加",
+    "favoriteRemove": "お気に入り解除",
+    "watchCompleted": "✓ 視聴完了",
+    "useTicket": "追加チケットを1枚使って視聴する",
+    "noTickets": "視聴枠がありません。チケットを購入してください。"
+  },
+  "pricing": {
+    "title": "学習プランを選択",
+    "subtitle": "あなたの学習ペースに合わせたプランをお選びください。",
+    "noticeTitle": "お知らせ",
+    "noticeMessage": "お客様はすでにプランをご契約中です。現在のプランの解約や変更をご希望の場合は、管理者までお問い合わせください。",
+    "planStandard": "スタンダードプラン",
+    "priceStandard": "$35.00",
+    "perMonth": "/月",
+    "subscribed": "契約済み",
+    "selectPlan": "プランを選択",
+    "alreadySubscribedError": "すでにプランを契約中のため、追加購入はできません"
+  }
+}
+</file>
+
+<file path="tsconfig.json">
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": [
+        "./*"
+      ]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts",
+    "**/*.mts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}
+</file>
+
 <file path="app/api/webhook/route.ts">
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js' // ★変更: 公式の標準クライアントを使用します
@@ -2872,7 +2916,7 @@ export async function POST(req: Request) {
       const userId = session.metadata.userId;
       if (userId) {
         const expiresAt = new Date();
-        expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+        expiresAt.setDate(expiresAt.getDate() + 30);
 
         // INSERT実行
         const { data, error } = await supabaseAdmin.from('video_credits').insert({
@@ -2950,51 +2994,6 @@ export async function POST(req: Request) {
   }
 
   return NextResponse.json({ received: true })
-}
-</file>
-
-<file path="tsconfig.json">
-{
-  "compilerOptions": {
-    "target": "ES2017",
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
-    ],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "noEmit": true,
-    "esModuleInterop": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "preserve",
-    "incremental": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
-    "paths": {
-      "@/*": [
-        "./*"
-      ]
-    }
-  },
-  "include": [
-    "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
-    ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts",
-    "**/*.mts"
-  ],
-  "exclude": [
-    "node_modules"
-  ]
 }
 </file>
 
@@ -3373,7 +3372,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ lang
             Legal Notice / 特定商取引法に基づく表記
           </Link>
           <span className="mt-4 md:mt-0 text-gray-400">
-            © {new Date().getFullYear()} Nihongo Learning
+            © {new Date().getFullYear()} Nihon Work Base
           </span>
         </div>
       </div>

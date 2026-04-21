@@ -84,7 +84,7 @@ export default async function SectionPage({
           <Link href={`/${lang}/terms`} className="hover:text-blue-600 transition-colors">Terms of Service</Link>
           <Link href={`/${lang}/privacy`} className="hover:text-blue-600 transition-colors">Privacy Policy</Link>
           <Link href={`/${lang}/legal`} className="hover:text-blue-600 transition-colors">Legal Notice</Link>
-          <span>© {new Date().getFullYear()} Nihongo Learning</span>
+          <span>© {new Date().getFullYear()} Nihon Work Base</span>
         </div>
       </footer>
       

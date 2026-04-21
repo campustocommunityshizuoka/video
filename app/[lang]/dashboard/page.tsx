@@ -271,7 +271,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ lang
             Legal Notice / 特定商取引法に基づく表記
           </Link>
           <span className="mt-4 md:mt-0 text-gray-400">
-            © {new Date().getFullYear()} Nihongo Learning
+            © {new Date().getFullYear()} Nihon Work Base
           </span>
         </div>
       </div>

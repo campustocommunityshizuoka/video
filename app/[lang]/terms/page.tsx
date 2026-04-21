@@ -18,8 +18,8 @@ export default async function TermsPage({ params }: { params: Promise<{ lang: 'j
         <div className="space-y-8 text-gray-700 leading-relaxed">
           <section>
             <h3 className="text-xl font-bold text-gray-900 mb-3">1. Acceptance of Terms / 規約の同意</h3>
-            <p>By accessing or using Nihongo Learning (the "Service"), you agree to be bound by these Terms of Service. If you disagree with any part of the terms, then you may not access the Service.</p>
-            <p className="text-sm text-gray-500 mt-2">Nihongo Learning（以下「本サービス」）を利用することにより、お客様は本規約に同意したものとみなされます。同意いただけない場合は、本サービスをご利用いただけません。</p>
+            <p>By accessing or using Nihon Work Base (the "Service"), you agree to be bound by these Terms of Service. If you disagree with any part of the terms, then you may not access the Service.</p>
+            <p className="text-sm text-gray-500 mt-2">Nihon Work Base（以下「本サービス」）を利用することにより、お客様は本規約に同意したものとみなされます。同意いただけない場合は、本サービスをご利用いただけません。</p>
           </section>
 
           <section>
@@ -49,8 +49,8 @@ export default async function TermsPage({ params }: { params: Promise<{ lang: 'j
 
           <section>
             <h3 className="text-xl font-bold text-gray-900 mb-3">4. Intellectual Property / 知的財産権</h3>
-            <p>All content, including videos, text, and logos, is the exclusive property of Nihongo Learning. You are granted a limited, non-exclusive, non-transferable license to access and view the content for personal, non-commercial educational purposes.</p>
-            <p className="text-sm text-gray-500 mt-2">動画、テキスト、ロゴを含むすべてのコンテンツの著作権および知的財産権は、Nihongo Learningに帰属します。お客様には、個人的かつ非営利の学習目的に限り、コンテンツにアクセスし視聴する限定的かつ譲渡不可の権利が付与されます。</p>
+            <p>All content, including videos, text, and logos, is the exclusive property of Nihon Work Base. You are granted a limited, non-exclusive, non-transferable license to access and view the content for personal, non-commercial educational purposes.</p>
+            <p className="text-sm text-gray-500 mt-2">動画、テキスト、ロゴを含むすべてのコンテンツの著作権および知的財産権は、Nihon Work Baseに帰属します。お客様には、個人的かつ非営利の学習目的に限り、コンテンツにアクセスし視聴する限定的かつ譲渡不可の権利が付与されます。</p>
           </section>
 
           <section>

@@ -1,21 +1,21 @@
 {
   "metadata": {
-    "title": "Nihongo Learning | 外国人のための日本語学習",
-    "description": "100本以上の高品質な授業動画が見放題。あなたのペースで確実な日本語力を身につけましょう。"
+    "title": "Nihon Work Base | 日本でのリアルな立ち回りを学ぶ",
+    "description": "100本以上の高品質な授業動画が見放題。日本特有のルールやマナー、生活の知恵を身につけましょう。"
   },
   "home": {
-    "title": "Nihongo Learning",
+    "title": "Nihon Work Base",
     "login": "ログイン",
     "startFree": "無料ではじめる",
-    "heroTitle1": "あなたのペースで、",
-    "heroTitle2": "確実な日本語力を。",
+    "heroTitle1": "語学だけじゃない、",
+    "heroTitle2": "日本での「リアルな立ち回り」を。",
     "heroDescription": "100本以上の高品質な授業動画が見放題。体系化されたカリキュラムで、日常会話からビジネス日本語まで、最短ルートでマスターしましょう。",
     "startNow": "今すぐ学習をスタート",
     "viewPricing": "料金プランを見る",
     "reasonsTitle": "選ばれる3つの理由",
-    "reasonsDesc": "効率的に日本語を習得するための、最適な環境が整っています。",
-    "feature1Title": "圧倒的な質の授業動画",
-    "feature1Desc": "プロの日本語教師による、わかりやすい解説動画。いつでもどこでも、何度でも見返すことができます。",
+    "reasonsDesc": "日本での生活を安全に、そして楽しくスタートさせるための環境が整っています。",
+    "feature1Title": "教科書には載っていないリアル",
+    "feature1Desc": "基本中の基本である挨拶から「なぜ日本人はこうするの？」といった文化の違いまで、本当に必要な知識をお届けします。",
     "feature2Title": "進捗がひと目でわかる",
     "feature2Desc": "セクションごとの学習達成度をパーセンテージで可視化。モチベーションを維持しながら学習を進められます。",
     "feature3Title": "シンプルで無駄のない料金体系",
@@ -27,10 +27,10 @@
     "mostPopular": "一番人気",
     "featureProgress": "進捗管理機能",
     "featureAllAccess": "月25本の視聴が可能",
-    "ctaTitle": "さあ、新しい言語の扉を開きましょう。",
+    "ctaTitle": "日本での新生活、不安を自信に変えましょう。",
     "ctaDesc": "アカウント作成はわずか1分で完了します。",
     "createFreeAccount": "無料でアカウントを作成する",
-    "footerRights": "Nihongo Learning. All rights reserved."
+    "footerRights": "Nihon Work Base. All rights reserved."
   },
   "auth": {
     "loginTitle": "ログイン",
