@@ -8,6 +8,27 @@ export async function middleware(request: NextRequest) {
     request: { headers: request.headers },
   })
 
+  const cspHeader = `
+    default-src 'self';
+    script-src 'self' 'unsafe-eval' 'unsafe-inline' https://js.stripe.com;
+    style-src 'self' 'unsafe-inline';
+    img-src 'self' blob: data: https://*.supabase.co https://i.vimeocdn.com;
+    font-src 'self';
+    object-src 'none';
+    base-uri 'self';
+    form-action 'self';
+    frame-ancestors 'none';
+    frame-src 'self' https://player.vimeo.com https://js.stripe.com https://hooks.stripe.com;
+    connect-src 'self' https://*.supabase.co https://api.stripe.com;
+  `.replace(/\s{2,}/g, ' ').trim();
+
+  response.headers.set('Content-Security-Policy', cspHeader);
+  response.headers.set('X-Frame-Options', 'DENY');
+  response.headers.set('X-Content-Type-Options', 'nosniff');
+  response.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  response.headers.set('X-XSS-Protection', '1; mode=block');
+
   // 2. Supabaseクライアントの初期化 (Server Component/Middleware用)
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
