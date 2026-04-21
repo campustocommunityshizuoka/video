@@ -159,6 +159,15 @@ export default async function VideoPage({
           </div>
         </div>
       </div>
+
+      <footer className="mt-20 py-8 border-t border-gray-100">
+      <div className="flex flex-col md:flex-row justify-center items-center gap-6 text-[11px] text-gray-400">
+        <Link href={`/${lang}/terms`} className="hover:text-blue-600 transition-colors">Terms of Service</Link>
+        <Link href={`/${lang}/privacy`} className="hover:text-blue-600 transition-colors">Privacy Policy</Link>
+        <Link href={`/${lang}/legal`} className="hover:text-blue-600 transition-colors">Legal Notice</Link>
+        <span>© {new Date().getFullYear()} Nihongo Learning</span>
+      </div>
+    </footer>
     </div>
   )
 }

@@ -1,5 +1,6 @@
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 import { getDictionary } from '@/utils/get-dictionary'
 import LanguageSwitcher from '@/app/components/LanguageSwitcher'
 
@@ -74,6 +75,15 @@ export default async function PricingPage({ params }: { params: Promise<{ lang: 
 
         </div>
       </div>
+
+      <footer className="mt-16 py-8 border-t border-gray-200">
+        <div className="flex flex-col md:flex-row justify-center items-center gap-6 text-[11px] text-gray-400">
+          <Link href={`/${lang}/terms`} className="hover:text-blue-600 transition-colors">Terms of Service</Link>
+          <Link href={`/${lang}/privacy`} className="hover:text-blue-600 transition-colors">Privacy Policy</Link>
+          <Link href={`/${lang}/legal`} className="hover:text-blue-600 transition-colors">Legal Notice</Link>
+          <span>© {new Date().getFullYear()} Nihongo Learning</span>
+        </div>
+      </footer>
     </div>
   )
 }

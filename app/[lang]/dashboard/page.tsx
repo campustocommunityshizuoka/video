@@ -257,6 +257,25 @@ export default async function DashboardPage({ params }: { params: Promise<{ lang
           ))}
         </div>
       </div>
+
+      {/* ここから追加: ダッシュボード用のミニフッター */}
+      <div className="mt-16 pt-8 pb-4 border-t border-gray-200">
+        <div className="flex flex-col md:flex-row justify-center items-center gap-4 md:gap-8 text-xs text-gray-500">
+          <Link href={`/${lang}/terms`} className="hover:text-blue-600 transition-colors">
+            Terms of Service / 利用規約
+          </Link>
+          <Link href={`/${lang}/privacy`} className="hover:text-blue-600 transition-colors">
+            Privacy Policy / プライバシーポリシー
+          </Link>
+          <Link href={`/${lang}/legal`} className="hover:text-blue-600 transition-colors">
+            Legal Notice / 特定商取引法に基づく表記
+          </Link>
+          <span className="mt-4 md:mt-0 text-gray-400">
+            © {new Date().getFullYear()} Nihongo Learning
+          </span>
+        </div>
+      </div>
+
     </div>
   )
 }

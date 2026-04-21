@@ -43,16 +43,21 @@ The content is organized as follows:
 .gitignore
 app/[lang]/admin/DeleteButton.tsx
 app/[lang]/admin/page.tsx
+app/[lang]/dashboard/loading.tsx
 app/[lang]/dashboard/page.tsx
 app/[lang]/layout.tsx
+app/[lang]/legal/page.tsx
 app/[lang]/login/page.tsx
 app/[lang]/page.tsx
 app/[lang]/pricing/page.tsx
+app/[lang]/privacy/page.tsx
 app/[lang]/reset-password/page.tsx
 app/[lang]/section/[id]/page.tsx
 app/[lang]/signup/page.tsx
+app/[lang]/terms/page.tsx
 app/[lang]/update-password/page.tsx
 app/[lang]/video/[id]/FavoriteButton.tsx
+app/[lang]/video/[id]/loading.tsx
 app/[lang]/video/[id]/page.tsx
 app/[lang]/video/[id]/VideoPlayer.tsx
 app/api/admin/add-video/route.ts
@@ -70,8 +75,8 @@ app/api/record-view/route.ts
 app/api/webhook/route.ts
 app/components/LanguageSwitcher.tsx
 app/components/PasswordInput.tsx
-app/favicon.ico
 app/globals.css
+app/not-found.tsx
 dictionaries/en.json
 dictionaries/ja.json
 eslint.config.mjs
@@ -81,6 +86,7 @@ package.json
 postcss.config.mjs
 public/file.svg
 public/globe.svg
+public/icon.png
 public/next.svg
 public/vercel.svg
 public/window.svg
@@ -111,6 +117,17 @@ export default function DeleteButton() {
     >
       削除
     </button>
+  )
+}
+</file>
+
+<file path="app/[lang]/dashboard/loading.tsx">
+export default function Loading() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      {/* くるくる回るシンプルなスピナー */}
+      <div className="animate-spin h-10 w-10 border-4 border-blue-200 border-t-blue-600 rounded-full"></div>
+    </div>
   )
 }
 </file>
@@ -166,6 +183,17 @@ export default function FavoriteButton({
       </span>
       {isFavorited ? textRemove : textAdd}
     </button>
+  )
+}
+</file>
+
+<file path="app/[lang]/video/[id]/loading.tsx">
+export default function Loading() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      {/* くるくる回るシンプルなスピナー */}
+      <div className="animate-spin h-10 w-10 border-4 border-blue-200 border-t-blue-600 rounded-full"></div>
+    </div>
   )
 }
 </file>
@@ -532,6 +560,22 @@ body {
 }
 </file>
 
+<file path="app/not-found.tsx">
+import Link from 'next/link'
+
+export default function NotFound() {
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-4">
+      <h2 className="text-4xl font-bold text-gray-800 mb-4">404 - Not Found</h2>
+      <p className="text-gray-600 mb-8">お探しのページは見つかりませんでした。</p>
+      <Link href="/" className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+        トップページへ戻る
+      </Link>
+    </div>
+  )
+}
+</file>
+
 <file path="postcss.config.mjs">
 const config = {
   plugins: {
@@ -726,169 +770,6 @@ export async function createClient() {
 }
 </file>
 
-<file path="app/[lang]/admin/page.tsx">
-import { createClient } from '@/utils/supabase/server'
-import { createClient as createAdminClient } from '@supabase/supabase-js' // ★追加：管理者権限用クライアント
-import { redirect } from 'next/navigation'
-import { revalidatePath } from 'next/cache'
-import Link from 'next/link'
-import DeleteButton from './DeleteButton'
-
-export const runtime = 'edge';
-
-export default async function AdminDashboard({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }) {
-  const { lang } = await params;
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user || user.email !== process.env.ADMIN_EMAIL) {
-    redirect('/dashboard')
-  }
-
-  // ★修正：RLSを無視して全データを取得できる管理者用クライアントを作成
-  const supabaseAdmin = createAdminClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-
-  // 管理者用クライアントを使ってサブスクリプション情報を取得
-  const { data: subscriptions } = await supabaseAdmin.from('subscriptions').select('*')
-  const activeSubs = subscriptions?.filter(sub => sub.status === 'active') || []
-  
-  const lightCount = activeSubs.filter(sub => sub.plan_type === 'light').length
-  const standardCount = activeSubs.filter(sub => sub.plan_type === 'standard').length
-  const premiumCount = activeSubs.filter(sub => sub.plan_type === 'premium').length
-
-  const { data: videos } = await supabase.from('videos').select('*').order('created_at', { ascending: false })
-
-  return (
-    <div className="min-h-screen bg-gray-900 text-gray-100 p-4 md:p-8 font-sans">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex justify-between items-center mb-8 bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-lg">
-          <div>
-            <span className="text-xs font-bold bg-red-500 text-white px-2 py-1 rounded uppercase tracking-wider mb-2 inline-block">Admin Mode</span>
-            <h1 className="text-2xl font-bold text-white">運営管理ダッシュボード</h1>
-          </div>
-          <Link href={`/${lang}/dashboard`} className="px-4 py-2 text-sm text-gray-300 bg-gray-700 rounded-md hover:bg-gray-600 transition-colors">
-            一般画面へ戻る
-          </Link>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="space-y-8 lg:col-span-1">
-            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
-              <h2 className="text-lg font-bold text-white mb-4 border-b border-gray-700 pb-2">現在の有料会員数</h2>
-              <div className="text-4xl font-extrabold text-blue-400 mb-6">{activeSubs.length} <span className="text-base font-normal text-gray-400">名</span></div>
-              
-              <div className="space-y-3">
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-gray-400">ライトプラン</span>
-                  <span className="font-bold text-white">{lightCount} 名</span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-blue-400">スタンダード</span>
-                  <span className="font-bold text-white">{standardCount} 名</span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-purple-400">プレミアム</span>
-                  <span className="font-bold text-white">{premiumCount} 名</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
-              <h2 className="text-lg font-bold text-white mb-4 border-b border-gray-700 pb-2">新しい動画を登録</h2>
-              <form action="/api/admin/add-video" method="POST" className="space-y-4">
-                <input type="hidden" name="lang" value={lang} />
-                <div>
-                  <label htmlFor="title" className="block text-sm font-medium text-gray-400 mb-1">セクション番号（例: 2-1）</label>
-                  <input type="text" name="title" id="title" required className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="2-1" />
-                </div>
-                <div>
-                  <label htmlFor="vimeo_id" className="block text-sm font-medium text-gray-400 mb-1">Vimeo ID（数字のみ）</label>
-                  <input type="text" name="vimeo_id" id="vimeo_id" required className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="123456789" />
-                </div>
-                <button type="submit" className="w-full py-2 bg-blue-600 text-white font-bold rounded-md hover:bg-blue-700 transition-colors mt-2">追加する</button>
-              </form>
-            </div>
-          </div>
-
-          <div className="lg:col-span-2">
-            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg h-full max-h-[800px] flex flex-col">
-              <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-2">
-                <h2 className="text-lg font-bold text-white">登録済み動画一覧</h2>
-                <span className="text-sm text-gray-400">計 {videos?.length || 0} 本</span>
-              </div>
-              <div className="overflow-y-auto pr-2 flex-grow space-y-2">
-                {videos?.map(video => (
-                  <div key={video.id} className="flex items-center justify-between bg-gray-700 p-3 rounded-lg border border-gray-600 hover:border-gray-500 transition-colors">
-                    <div><span className="text-blue-400 font-bold mr-3">{video.title}</span><span className="text-sm text-gray-400">ID: {video.vimeo_id}</span></div>
-                    <form action="/api/admin/delete-video" method="POST">
-                      <input type="hidden" name="lang" value={lang} />
-                      <input type="hidden" name="id" value={video.id} />
-                      <DeleteButton />
-                    </form>
-                  </div>
-                ))}
-                {(!videos || videos.length === 0) && <p className="text-gray-500 text-center py-8">動画が登録されていません。</p>}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-</file>
-
-<file path="app/[lang]/layout.tsx">
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import "../globals.css";
-import { getDictionary } from '@/utils/get-dictionary';
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-// ★ 修正1：Promise<{ lang: string }> に変更
-export async function generateMetadata({ params }: { params: Promise<{ lang: string }> }): Promise<Metadata> {
-  const { lang } = await params;
-  // ★ ここで 'ja' | 'en' 型として扱うように指定（as 構文）
-  const dict = await getDictionary(lang as 'ja' | 'en');
-  
-  return {
-    title: dict.metadata.title,
-    description: dict.metadata.description,
-  };
-}
-
-// ★ 修正2：Promise<{ lang: string }> に変更
-export default async function RootLayout({
-  children,
-  params,
-}: Readonly<{
-  children: React.ReactNode;
-  params: Promise<{ lang: string }>;
-}>) {
-  const { lang } = await params;
-  
-  return (
-    <html lang={lang}>
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        {children}
-      </body>
-    </html>
-  );
-}
-</file>
-
 <file path="app/[lang]/section/[id]/page.tsx">
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
@@ -975,111 +856,6 @@ export default async function SectionPage({
 }
 </file>
 
-<file path="app/api/auth/callback/route.ts">
-import { NextResponse } from 'next/server'
-import { createClient } from '@/utils/supabase/server'
-
-export const runtime = 'edge';
-
-export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url)
-  const code = searchParams.get('code')
-  const next = searchParams.get('next') ?? '/'
-
-  if (code) {
-    const supabase = await createClient()
-    const { data, error } = await supabase.auth.exchangeCodeForSession(code)
-
-    if (!error && data?.session) {
-      const user = data.session.user;
-
-      const { data: subscription } = await supabase
-        .from('subscriptions')
-        .select('plan_type')
-        .eq('user_id', user.id)
-        .maybeSingle();
-        
-      if (subscription?.plan_type === 'light' || subscription?.plan_type === 'standard') {
-        // アクセストークンの末尾など、このセッション固有の値を識別子とする
-        const sessionId = data.session.access_token.slice(-20);
-        
-        await supabase
-          .from('subscriptions')
-          .update({ current_session_id: sessionId })
-          .eq('user_id', user.id);
-          
-        console.log(`【セッション更新】: ユーザー ${user.id} (${subscription.plan_type})`);
-      }
-
-      return NextResponse.redirect(`${origin}${next}`)
-    } else {
-      console.error('【認証エラー発生】:', error?.message)
-    }
-  } else {
-    console.error('【認証エラー発生】: URLに認証コード(code)が含まれていません')
-  }
-
-  // エラー時はトップページへ戻します
-  return NextResponse.redirect(`${origin}/?message=auth-error`)
-}
-</file>
-
-<file path="app/api/auth/login/route.ts">
-// app/api/auth/login/route.ts
-import { NextResponse } from 'next/server'
-import { createClient } from '@/utils/supabase/server'
-
-export const runtime = 'edge';
-
-export async function POST(request: Request) {
-  // 標準的なフォームデータを受け取ります
-  const formData = await request.formData()
-  const email = formData.get('email') as string
-  const password = formData.get('password') as string
-  const currentLang = formData.get('lang') as string || 'ja'
-  
-  let redirectUrl = ''
-
-  try {
-    const supabase = await createClient()
-    const { data , error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-
-    if (error) {
-      console.error('ログインエラー:', error.message)
-      redirectUrl = `/${currentLang}/login?message=error`
-    } else if (data.session) {
-      // ★ ここから追加：セッションIDをDBに記録
-      const user = data.session.user
-      const { data: sub } = await supabase
-        .from('subscriptions')
-        .select('plan_type')
-        .eq('user_id', user.id)
-        .maybeSingle()
-
-      // ライト・スタンダードのみ制限
-      if (sub?.plan_type === 'light' || sub?.plan_type === 'standard') {
-        const sessionId = data.session.access_token.slice(-20)
-        const { error: updateError } = await supabase
-          .from('subscriptions')
-          .update({ current_session_id: sessionId })
-          .eq('user_id', user.id)
-      }
-      
-      redirectUrl = `/${currentLang}/dashboard`
-    }
-  } catch (e: any) {
-    console.error('予期せぬシステムエラー:', e.message)
-    redirectUrl = `/ja/login?message=error`
-  }
-
-  // 303 (See Other) を使って、POSTリクエストから安全にリダイレクトさせます
-  return NextResponse.redirect(new URL(redirectUrl, request.url), 303)
-}
-</file>
-
 <file path="app/components/PasswordInput.tsx">
 'use client'
 
@@ -1121,90 +897,6 @@ export default function PasswordInput({
       </button>
     </div>
   )
-}
-</file>
-
-<file path="middleware.ts">
-import { createServerClient } from '@supabase/ssr'
-import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
-
-export async function middleware(request: NextRequest) {
-  // 1. レスポンスオブジェクトの初期化
-  let response = NextResponse.next({
-    request: { headers: request.headers },
-  })
-
-  // 2. Supabaseクライアントの初期化 (Server Component/Middleware用)
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll: () => request.cookies.getAll(),
-        setAll: (cookiesToSet) => {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          response = NextResponse.next({ request })
-          cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options))
-        },
-      },
-    }
-  )
-
-  // セッション情報を取得
-  const { data: { user } } = await supabase.auth.getUser() // サーバー側で認証を検証
-  const { data: { session } } = await supabase.auth.getSession() // トークン取得用
-  const { pathname } = request.nextUrl
-
-  // ----------------------------------------------------------------
-  // A. 1アカウント1ログイン制限ロジック (ダッシュボードと動画ページが対象)
-  // ----------------------------------------------------------------
-  if (session && (pathname.includes('/dashboard') || pathname.includes('/video'))) {
-    // データベースから最新のセッションIDを取得
-    const { data: sub } = await supabase
-      .from('subscriptions')
-      .select('plan_type, current_session_id')
-      .eq('user_id', session.user.id)
-      .maybeSingle();
-
-    // ライト・スタンダードプランのみ判定
-    if (sub?.plan_type === 'light' || sub?.plan_type === 'standard') {
-      const currentTokenId = session.access_token.slice(-20);
-      
-      // DBのIDと手元のトークンIDが一致しない＝別の端末で新しくログインされた
-      if (sub.current_session_id && sub.current_session_id !== currentTokenId) {
-        // 強制ログアウト処理
-        await supabase.auth.signOut();
-        const lang = pathname.startsWith('/en') ? 'en' : 'ja';
-        const redirectUrl = new URL(`/${lang}/login?message=other_device`, request.url);
-        return NextResponse.redirect(redirectUrl);
-      }
-    }
-  }
-
-  // ----------------------------------------------------------------
-  // B. 言語リダイレクトロジック (既存機能)
-  // ----------------------------------------------------------------
-  const locales = ['ja', 'en']
-  const defaultLocale = 'ja'
-  const pathnameHasLocale = locales.some(
-    (locale) => pathname.startsWith(`/${locale}/`) || pathname === `/${locale}`
-  )
-
-  if (!pathnameHasLocale) {
-    // ロケールが含まれていない場合は、デフォルト言語（/ja）を付与
-    const url = request.nextUrl.clone()
-    url.pathname = `/${defaultLocale}${pathname}`
-    return NextResponse.redirect(url)
-  }
-
-  return response
-}
-
-export const config = {
-  matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
-  ],
 }
 </file>
 
@@ -1252,6 +944,438 @@ yarn-error.log*
 next-env.d.ts
 
 stripe.exe
+</file>
+
+<file path="app/[lang]/admin/page.tsx">
+import { createClient } from '@/utils/supabase/server'
+import { createClient as createAdminClient } from '@supabase/supabase-js' // ★追加：管理者権限用クライアント
+import { redirect } from 'next/navigation'
+import { revalidatePath } from 'next/cache'
+import Link from 'next/link'
+import DeleteButton from './DeleteButton'
+
+export const runtime = 'edge';
+
+export default async function AdminDashboard({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }) {
+  const { lang } = await params;
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user || user.email !== process.env.ADMIN_EMAIL) {
+    redirect('/dashboard')
+  }
+
+  // ★修正：RLSを無視して全データを取得できる管理者用クライアントを作成
+  const supabaseAdmin = createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+
+  // 管理者用クライアントを使ってサブスクリプション情報を取得
+  const { data: subscriptions } = await supabaseAdmin.from('subscriptions').select('*')
+  const activeSubs = subscriptions?.filter(sub => sub.status === 'active') || []
+  
+  const standardCount = activeSubs.filter(sub => sub.plan_type === 'standard').length;
+
+  const { data: videos } = await supabase.from('videos').select('*').order('created_at', { ascending: false })
+
+  return (
+    <div className="min-h-screen bg-gray-900 text-gray-100 p-4 md:p-8 font-sans">
+      <div className="max-w-6xl mx-auto">
+        <div className="flex justify-between items-center mb-8 bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-lg">
+          <div>
+            <span className="text-xs font-bold bg-red-500 text-white px-2 py-1 rounded uppercase tracking-wider mb-2 inline-block">Admin Mode</span>
+            <h1 className="text-2xl font-bold text-white">運営管理ダッシュボード</h1>
+          </div>
+          <Link href={`/${lang}/dashboard`} className="px-4 py-2 text-sm text-gray-300 bg-gray-700 rounded-md hover:bg-gray-600 transition-colors">
+            一般画面へ戻る
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="space-y-8 lg:col-span-1">
+            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
+              <h2 className="text-lg font-bold text-white mb-4 border-b border-gray-700 pb-2">現在の有料会員数</h2>
+              <div className="text-4xl font-extrabold text-blue-400 mb-6">{activeSubs.length} <span className="text-base font-normal text-gray-400">名</span></div>
+              
+              <div className="space-y-3">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-blue-400">スタンダード</span>
+                  <span className="font-bold text-white">{standardCount} 名</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
+              <h2 className="text-lg font-bold text-white mb-4 border-b border-gray-700 pb-2">新しい動画を登録</h2>
+              <form action="/api/admin/add-video" method="POST" className="space-y-4">
+                <input type="hidden" name="lang" value={lang} />
+                <div>
+                  <label htmlFor="title" className="block text-sm font-medium text-gray-400 mb-1">セクション番号（例: 2-1）</label>
+                  <input type="text" name="title" id="title" required className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="2-1" />
+                </div>
+                <div>
+                  <label htmlFor="vimeo_id" className="block text-sm font-medium text-gray-400 mb-1">Vimeo ID（数字のみ）</label>
+                  <input type="text" name="vimeo_id" id="vimeo_id" required className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="123456789" />
+                </div>
+                <button type="submit" className="w-full py-2 bg-blue-600 text-white font-bold rounded-md hover:bg-blue-700 transition-colors mt-2">追加する</button>
+              </form>
+            </div>
+          </div>
+
+          <div className="lg:col-span-2">
+            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg h-full max-h-200 flex flex-col">
+              <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-2">
+                <h2 className="text-lg font-bold text-white">登録済み動画一覧</h2>
+                <span className="text-sm text-gray-400">計 {videos?.length || 0} 本</span>
+              </div>
+              <div className="overflow-y-auto pr-2 grow space-y-2">
+                {videos?.map(video => (
+                  <div key={video.id} className="flex items-center justify-between bg-gray-700 p-3 rounded-lg border border-gray-600 hover:border-gray-500 transition-colors">
+                    <div><span className="text-blue-400 font-bold mr-3">{video.title}</span><span className="text-sm text-gray-400">ID: {video.vimeo_id}</span></div>
+                    <form action="/api/admin/delete-video" method="POST">
+                      <input type="hidden" name="lang" value={lang} />
+                      <input type="hidden" name="id" value={video.id} />
+                      <DeleteButton />
+                    </form>
+                  </div>
+                ))}
+                {(!videos || videos.length === 0) && <p className="text-gray-500 text-center py-8">動画が登録されていません。</p>}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+</file>
+
+<file path="app/[lang]/legal/page.tsx">
+import Link from 'next/link'
+
+export const runtime = 'edge';
+
+export default async function LegalPage({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }) {
+  const { lang } = await params;
+
+  return (
+    <div className="min-h-screen bg-gray-50 py-16 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-3xl mx-auto bg-white p-8 md:p-12 rounded-xl shadow-sm border border-gray-100">
+        <Link href={`/${lang}`} className="text-blue-600 hover:underline mb-8 inline-block font-medium">← Back to Home</Link>
+        
+        <h1 className="text-2xl md:text-3xl font-bold mb-8 text-gray-900 border-b pb-4">
+          Legal Notice (Act on Specified Commercial Transactions)<br/>
+          <span className="text-lg text-gray-500 font-normal mt-2 block">特定商取引法に基づく表記</span>
+        </h1>
+        
+        <div className="space-y-6 text-gray-700 leading-relaxed">
+          <div>
+            <h3 className="font-bold text-gray-900">Distributor / 販売事業者名</h3>
+            <p className="mt-1">[Your Company Name or Your Full Name / 法人名または個人事業主の氏名]</p>
+          </div>
+
+          <div>
+            <h3 className="font-bold text-gray-900">Representative / 運営統括責任者</h3>
+            <p className="mt-1">[Your Name / 代表者氏名]</p>
+          </div>
+
+          <div>
+            <h3 className="font-bold text-gray-900">Address / 所在地</h3>
+            <p className="mt-1">[Your Full Address, City, State, Zip, Country / 郵便番号、都道府県、市区町村、番地、建物名]</p>
+          </div>
+
+          <div>
+            <h3 className="font-bold text-gray-900">Phone Number / 電話番号</h3>
+            <p className="mt-1">[Your Phone Number with Country Code (e.g., +81-90-XXXX-XXXX) / 電話番号]</p>
+          </div>
+
+          <div>
+            <h3 className="font-bold text-gray-900">Email Address / メールアドレス</h3>
+            <p className="mt-1">[support@yourdomain.com / サポート用メールアドレス]</p>
+          </div>
+
+          <div>
+            <h3 className="font-bold text-gray-900">Selling Price / 販売価格</h3>
+            <p className="mt-1">
+              Standard Plan (Subscription): $35.00 / month<br/>
+              Additional Tickets (One-time): $35.00 / 25 tickets<br/>
+              <span className="text-sm text-gray-500">
+                基本プラン（月額）: 35.00ドル<br/>
+                追加チケット（買い切り）: 35.00ドル（25本分）
+              </span>
+            </p>
+          </div>
+
+          <div>
+            <h3 className="font-bold text-gray-900">Additional Fees / 商品代金以外の必要料金</h3>
+            <p className="mt-1">Internet connection fees and communication charges are the responsibility of the customer.</p>
+            <p className="text-sm text-gray-500 mt-1">本サービスの利用に必要となるインターネット接続料金、通信料金等はお客様の負担となります。</p>
+          </div>
+
+          <div>
+            <h3 className="font-bold text-gray-900">Payment Method / 支払方法</h3>
+            <p className="mt-1">Credit Card (processed via Stripe)</p>
+            <p className="text-sm text-gray-500 mt-1">クレジットカード決済（Stripeを通じた決済）</p>
+          </div>
+
+          <div>
+            <h3 className="font-bold text-gray-900">Delivery Time / 引き渡し時期</h3>
+            <p className="mt-1">The service is available immediately after the payment is successfully processed.</p>
+            <p className="text-sm text-gray-500 mt-1">クレジットカード決済完了後、ただちにご利用いただけます。</p>
+          </div>
+
+          <div className="bg-red-50 p-4 rounded-md border border-red-100">
+            <h3 className="font-bold text-red-800">Returns and Cancellations / 返品・キャンセル（返金ポリシー）</h3>
+            <p className="mt-2 text-red-900">
+              Due to the nature of digital content, we do not accept returns or offer refunds after a purchase has been made.
+              You may cancel your subscription at any time. Cancellation will take effect at the end of your current billing cycle, and you will not be charged again. We do not provide prorated refunds for cancellations made during an active billing period.
+            </p>
+            <p className="text-sm text-red-700 mt-2 border-t border-red-200 pt-2">
+              デジタルコンテンツという商品の性質上、購入確定後の返品・返金には一切応じられません。<br/>
+              サブスクリプションの解約はいつでも可能です。解約手続きを行った場合、現在の請求期間の終了日をもって自動更新が停止されます。請求期間の途中で解約された場合でも、日割り計算による返金は行いません。
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+</file>
+
+<file path="app/[lang]/privacy/page.tsx">
+import Link from 'next/link'
+
+export const runtime = 'edge';
+
+export default async function PrivacyPage({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }) {
+  const { lang } = await params;
+
+  return (
+    <div className="min-h-screen bg-gray-50 py-16 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-3xl mx-auto bg-white p-8 md:p-12 rounded-xl shadow-sm border border-gray-100">
+        <Link href={`/${lang}`} className="text-blue-600 hover:underline mb-8 inline-block font-medium">← Back to Home</Link>
+        
+        <h1 className="text-2xl md:text-3xl font-bold mb-8 text-gray-900 border-b pb-4">
+          Privacy Policy<br/>
+          <span className="text-lg text-gray-500 font-normal mt-2 block">プライバシーポリシー（個人情報の取り扱い）</span>
+        </h1>
+        
+        <div className="space-y-8 text-gray-700 leading-relaxed">
+          <section>
+            <h3 className="text-xl font-bold text-gray-900 mb-3">1. Information We Collect / 収集する情報</h3>
+            <p>We collect information you provide directly to us when you create an account, such as your email address and password. We also collect data regarding your usage of the Service, such as video viewing history and progress.</p>
+            <p className="text-sm text-gray-500 mt-2">当サイトは、アカウント作成時にお客様が提供するメールアドレスおよびパスワードを収集します。また、動画の視聴履歴や学習進捗などのサービス利用状況に関するデータも自動的に収集します。</p>
+          </section>
+
+          <section>
+            <h3 className="text-xl font-bold text-gray-900 mb-3">2. Payment Information / 決済情報について</h3>
+            <p>All subscription and ticket payments are processed securely by our third-party payment processor, Stripe. <strong className="text-blue-600">We do not store or process your credit card numbers on our servers.</strong></p>
+            <p className="text-sm text-gray-500 mt-2">すべてのサブスクリプションおよびチケットの支払いは、外部の決済代行サービスであるStripeによって安全に処理されます。<strong className="text-blue-600">当サイトのサーバーには、お客様のクレジットカード番号等の決済情報は一切保存されません。</strong></p>
+          </section>
+
+          <section>
+            <h3 className="text-xl font-bold text-gray-900 mb-3">3. Use of Information / 情報の利用目的</h3>
+            <p>We use the collected information to provide, maintain, and improve the Service, to process your transactions, and to communicate with you regarding your account and customer support.</p>
+            <p className="text-sm text-gray-500 mt-2">収集した情報は、サービスの提供、維持、改善、取引の処理、およびアカウントやカスタマーサポートに関するお客様との連絡のために使用されます。</p>
+          </section>
+
+          <section>
+            <h3 className="text-xl font-bold text-gray-900 mb-3">4. Third-Party Services / 第三者サービスへの提供</h3>
+            <p>We use Supabase for authentication and database management, and Stripe for payment processing. Your data may be shared with these trusted partners solely for the purpose of providing the Service.</p>
+            <p className="text-sm text-gray-500 mt-2">当サイトは、ユーザー認証およびデータベース管理にSupabaseを、決済処理にStripeを使用しています。お客様のデータは、サービスの提供を目的としてのみ、これらの信頼できるパートナーと共有される場合があります。</p>
+          </section>
+
+          <section>
+            <h3 className="text-xl font-bold text-gray-900 mb-3">5. International Data Transfers / データの越境移転</h3>
+            <p>Your information may be transferred to and maintained on servers located outside of your country or jurisdiction. By using the Service, you consent to this transfer.</p>
+            <p className="text-sm text-gray-500 mt-2">お客様の情報は、お客様の居住国以外の国にあるサーバーに転送され、保管される場合があります。本サービスを利用することにより、お客様はこのデータの転送に同意したものとみなされます。</p>
+          </section>
+
+          <section>
+            <h3 className="text-xl font-bold text-gray-900 mb-3">6. Contact Us / お問い合わせ</h3>
+            <p>If you have any questions about this Privacy Policy, please contact us at:</p>
+            <p className="font-medium text-blue-600 mt-1">[support@yourdomain.com]</p>
+            <p className="text-sm text-gray-500 mt-2">本プライバシーポリシーに関するご質問は、上記のメールアドレスまでお問い合わせください。</p>
+          </section>
+        </div>
+      </div>
+    </div>
+  )
+}
+</file>
+
+<file path="app/[lang]/terms/page.tsx">
+import Link from 'next/link'
+
+export const runtime = 'edge';
+
+export default async function TermsPage({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }) {
+  const { lang } = await params;
+
+  return (
+    <div className="min-h-screen bg-gray-50 py-16 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-3xl mx-auto bg-white p-8 md:p-12 rounded-xl shadow-sm border border-gray-100">
+        <Link href={`/${lang}`} className="text-blue-600 hover:underline mb-8 inline-block font-medium">← Back to Home</Link>
+        
+        <h1 className="text-2xl md:text-3xl font-bold mb-8 text-gray-900 border-b pb-4">
+          Terms of Service<br/>
+          <span className="text-lg text-gray-500 font-normal mt-2 block">利用規約</span>
+        </h1>
+        
+        <div className="space-y-8 text-gray-700 leading-relaxed">
+          <section>
+            <h3 className="text-xl font-bold text-gray-900 mb-3">1. Acceptance of Terms / 規約の同意</h3>
+            <p>By accessing or using Nihongo Learning (the "Service"), you agree to be bound by these Terms of Service. If you disagree with any part of the terms, then you may not access the Service.</p>
+            <p className="text-sm text-gray-500 mt-2">Nihongo Learning（以下「本サービス」）を利用することにより、お客様は本規約に同意したものとみなされます。同意いただけない場合は、本サービスをご利用いただけません。</p>
+          </section>
+
+          <section>
+            <h3 className="text-xl font-bold text-gray-900 mb-3">2. Subscription and Tickets / サブスクリプションとチケット</h3>
+            <p>The Service is provided on a subscription basis ($35.00/month for up to 25 video views). Additional video views can be purchased via Tickets ($35.00 for 25 views). Unused base capacity resets at the end of each billing cycle. Purchased tickets do not expire as long as the account is active, up to a maximum holding limit of 100 tickets.</p>
+            <p className="text-sm text-gray-500 mt-2">本サービスは月額制（月額35ドル/月間25本まで視聴可能）で提供されます。追加の視聴枠はチケット（35ドル/25本）にて購入可能です。月額プランの未使用の視聴枠は翌月に繰り越されません。購入したチケットはアカウントが有効な限り無期限で利用可能ですが、最大100本分までしかストックできません。</p>
+          </section>
+
+          <section>
+            <h3 className="text-xl font-bold text-gray-900 mb-3">3. Prohibited Actions / 禁止事項</h3>
+            <p>You agree not to engage in any of the following activities:</p>
+            <ul className="list-disc pl-5 mt-2 space-y-1">
+              <li>Sharing your account credentials with others (Account sharing).</li>
+              <li>Downloading, recording, reproducing, or redistributing any video content provided by the Service.</li>
+              <li>Attempting to bypass the viewing limit mechanisms.</li>
+            </ul>
+            <p className="mt-2 font-medium text-red-600">We reserve the right to immediately suspend or terminate accounts that violate these rules without any refund.</p>
+            
+            <div className="text-sm text-gray-500 mt-3 p-3 bg-gray-50 rounded">
+              お客様は以下の行為を行わないことに同意します。<br/>
+              ・アカウント情報を他者と共有し、複数人で使い回す行為。<br/>
+              ・本サービスが提供する動画コンテンツのダウンロード、録画、複製、無断転載。<br/>
+              ・視聴制限のシステムを不正に回避する行為。<br/>
+              これらの違反が発覚した場合、運営者は予告なくアカウントを即時停止・削除する権利を有し、いかなる返金も行いません。
+            </div>
+          </section>
+
+          <section>
+            <h3 className="text-xl font-bold text-gray-900 mb-3">4. Intellectual Property / 知的財産権</h3>
+            <p>All content, including videos, text, and logos, is the exclusive property of Nihongo Learning. You are granted a limited, non-exclusive, non-transferable license to access and view the content for personal, non-commercial educational purposes.</p>
+            <p className="text-sm text-gray-500 mt-2">動画、テキスト、ロゴを含むすべてのコンテンツの著作権および知的財産権は、Nihongo Learningに帰属します。お客様には、個人的かつ非営利の学習目的に限り、コンテンツにアクセスし視聴する限定的かつ譲渡不可の権利が付与されます。</p>
+          </section>
+
+          <section>
+            <h3 className="text-xl font-bold text-gray-900 mb-3">5. Limitation of Liability / 免責事項</h3>
+            <p>The Service is provided "as is". We do not guarantee continuous, uninterrupted access to the Service. We are not liable for any learning outcomes, damages, or losses resulting from the use or inability to use the Service.</p>
+            <p className="text-sm text-gray-500 mt-2">本サービスは「現状有姿」で提供されます。運営者は、サービスの中断がないことを保証しません。また、本サービスの利用または利用不能から生じる学習結果、いかなる損害についても責任を負いません。</p>
+          </section>
+        </div>
+      </div>
+    </div>
+  )
+}
+</file>
+
+<file path="app/api/auth/callback/route.ts">
+import { NextResponse } from 'next/server'
+import { createClient } from '@/utils/supabase/server'
+
+export const runtime = 'edge';
+
+export async function GET(request: Request) {
+  const { searchParams, origin } = new URL(request.url)
+  const code = searchParams.get('code')
+  const next = searchParams.get('next') ?? '/'
+
+  if (code) {
+    const supabase = await createClient()
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+
+    if (!error && data?.session) {
+      const user = data.session.user;
+
+      const newSessionId = crypto.randomUUID();
+      await supabase
+        .from('subscriptions')
+        .update({ current_session_id: newSessionId })
+        .eq('user_id', user.id);
+        
+      console.log(`【セッション更新】: ユーザー ${user.id}`);
+
+      // ★修正：レスポンスを作成しCookieを付与
+      const response = NextResponse.redirect(`${origin}${next}`);
+      response.cookies.set('device_session_id', newSessionId, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 60 * 60 * 24 * 365,
+        path: '/',
+      });
+      return response;
+    } else {
+      console.error('【認証エラー発生】:', error?.message)
+    }
+  } else {
+    console.error('【認証エラー発生】: URLに認証コード(code)が含まれていません')
+  }
+
+  // エラー時はトップページへ戻します
+  return NextResponse.redirect(`${origin}/?message=auth-error`)
+}
+</file>
+
+<file path="app/api/auth/login/route.ts">
+// app/api/auth/login/route.ts
+import { NextResponse } from 'next/server'
+import { createClient } from '@/utils/supabase/server'
+
+export const runtime = 'edge';
+
+export async function POST(request: Request) {
+  // 標準的なフォームデータを受け取ります
+  const formData = await request.formData()
+  const email = formData.get('email') as string
+  const password = formData.get('password') as string
+  const currentLang = formData.get('lang') as string || 'ja'
+  
+  let redirectUrl = ''
+  let newSessionId = ''
+
+  try {
+    const supabase = await createClient()
+    const { data , error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
+
+    if (error) {
+      console.error('ログインエラー:', error.message)
+      redirectUrl = `/${currentLang}/login?message=error`
+    } else if (data.session) {
+      // ★ ここから追加：セッションIDをDBに記録
+      newSessionId = crypto.randomUUID()
+      
+      const user = data.session.user
+
+      await supabase
+        .from('subscriptions')
+        .update({ current_session_id: newSessionId })
+        .eq('user_id', user.id)
+      
+      redirectUrl = `/${currentLang}/dashboard`
+    }
+  } catch (e: any) {
+    console.error('予期せぬシステムエラー:', e.message)
+    redirectUrl = `/ja/login?message=error`
+  }
+
+  const response = NextResponse.redirect(new URL(redirectUrl, request.url), 303)
+  if (newSessionId) {
+    response.cookies.set('device_session_id', newSessionId, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 60 * 60 * 24 * 365, // 1年保持
+      path: '/',
+    })
+  }
+  return response
+}
 </file>
 
 <file path="app/api/record-view/route.ts">
@@ -1341,272 +1465,6 @@ export async function POST(req: Request) {
 }
 </file>
 
-<file path="dictionaries/en.json">
-{
-  "metadata": {
-    "title": "Nihongo Learning | Japanese Learning Platform",
-    "description": "Unlimited access to over 100 high-quality video lessons. Master Japanese at your own pace."
-  },
-  "home": {
-    "title": "Nihongo Learning",
-    "login": "Log in",
-    "startFree": "Start for Free",
-    "heroTitle1": "Master Japanese",
-    "heroTitle2": "at your own pace.",
-    "heroDescription": "Unlimited access to over 100 high-quality video lessons. Master everything from daily conversation to business Japanese with our structured curriculum.",
-    "startNow": "Start Learning Now",
-    "viewPricing": "View Pricing Plans",
-    "reasonsTitle": "3 Reasons to Choose Us",
-    "reasonsDesc": "We provide the optimal environment for learning Japanese efficiently.",
-    "feature1Title": "High-Quality Video Lessons",
-    "feature1Desc": "Easy-to-understand explanations by professional Japanese teachers. Watch them anytime, anywhere, as many times as you like.",
-    "feature2Title": "Track Your Progress",
-    "feature2Desc": "Visualize your learning achievement for each section with percentages. Keep your motivation high as you learn.",
-    "feature3Title": "Flexible Pricing Plans",
-    "feature3Desc": "We offer 3 plans to suit your learning pace, from a Light plan to an unlimited Premium plan.",
-    "pricingTitle": "Simple Pricing",
-    "pricingDesc": "Registration is free. Create an account first, then choose the plan that suits you.",
-    "planLight": "Light",
-    "planStandard": "Standard",
-    "planPremium": "Premium",
-    "perMonth": " / month",
-    "mostPopular": "Most Popular",
-    "standardFeature1": "Watch up to 25 videos per month",
-    "featureProgress": "Progress tracking",
-    "featureAllAccess": "Access to all sections",
-    "ctaTitle": "Let's open the door to a new language.",
-    "ctaDesc": "Account creation takes only 1 minute.",
-    "createFreeAccount": "Create a Free Account",
-    "footerRights": "Nihongo Learning. All rights reserved."
-  },
-  "auth": {
-    "loginTitle": "Log In",
-    "signupTitle": "Create an Account",
-    "emailLabel": "Email Address",
-    "emailPlaceholder": "you@example.com",
-    "passwordLabel": "Password",
-    "passwordPlaceholder": "••••••••",
-    "loginButton": "Log In",
-    "signupButton": "Sign Up",
-    "toSignupText": "Don't have an account?",
-    "toSignupLink": "Sign up here",
-    "toLoginText": "Already have an account?",
-    "toLoginLink": "Log in here",
-    "loginError": "Failed to log in. Please check your email and password.",
-    "signupError": "Failed to sign up.",
-    "signupSuccess": "A confirmation email has been sent. Please click the link in the email to complete registration.",
-    "showPassword": "Show",
-    "hidePassword": "Hide",
-    "forgotPassword": "Forgot your password?",
-    "resetPasswordTitle": "Reset Password",
-    "resetPasswordDesc": "Enter your registered email address. We will send you a link to reset your password.",
-    "sendResetLink": "Send Reset Link",
-    "resetLinkSent": "A password reset email has been sent. Please click the link in the email to reset your password.",
-    "updatePasswordTitle": "Set New Password",
-    "updatePasswordButton": "Update Password",
-    "updatePasswordSuccess": "Your password has been updated. Redirecting to the dashboard...",
-    "backToLogin": "Back to Login",
-    "newPasswordLabel": "New Password",
-    "rateLimitError": "Email sending limit reached. For security reasons, please wait a while before trying again.",
-    "generalError": "An error occurred. Please check your email address and try again."
-  },
-  "dashboard": {
-    "title": "Learning Dashboard",
-    "adminButton": "Admin Dashboard",
-    "logoutButton": "Log Out",
-    "welcome": "Welcome, ",
-    "honorific": "",
-    "subscriptionStatus": "Current Subscription Status",
-    "renewalDate": "Renewal Date: ",
-    "manageSubscription": "Manage Subscription",
-    "noSubscription": "No active subscription.",
-    "choosePlan": "Choose a Plan",
-    "planStandard": "Basic Plan (25 videos/mo)",
-    "planNone": "Unsubscribed",
-    "continueWatching": "Continue Watching",
-    "recentlyWatched": "Recently Watched",
-    "favorites": "Favorites",
-    "watch": "▶ Watch",
-    "courseList": "Course List",
-    "section": "Section ",
-    "videosCount": " videos",
-    "progress": "Progress: ",
-    "completed": " Completed",
-    "remainingTickets": "Extra Tickets: {count} remaining",
-    "buyTickets": "Buy 25 Extra Video Tickets ($35.00)",
-    "validTickets": "Valid Extra Tickets: {count}",
-    "ticketStockLimit": "* Maximum stock is 100 tickets."
-  },
-  "section": {
-    "backToDashboard": "← Back to Dashboard",
-    "title": "Videos for Section {id}",
-    "viewed": "✓ Viewed",
-    "watchAgain": "Watch Again",
-    "watch": "Watch"
-  },
-  "video": {
-    "requireSubscription": "A subscription plan is required to watch videos.",
-    "toPricing": "Go to Pricing",
-    "limitReachedTitle": "Monthly viewing limit reached ({limit} videos)",
-    "limitMessage": "To watch more videos, please wait for next year's renewal or consider upgrading your plan or purchases additional Tickets.",
-    "backToDashboard": "← Back to Dashboard",
-    "playerTitle": "Video Player",
-    "currentPlan": "Current Plan",
-    "yearlyWatchCount": "Monthly Videos Watched",
-    "unlimited": "Unlimited",
-    "videosUnit": " videos",
-    "favoriteAdd": "Add to Favorites",
-    "favoriteRemove": "Remove Favorite",
-    "watchCompleted": "✓ Completed"
-  },
-  "pricing": {
-    "title": "Choose a Learning Plan",
-    "subtitle": "Select the plan that best fits your learning pace.",
-    "noticeTitle": "Notice",
-    "noticeMessage": "You are already subscribed to a plan. If you wish to cancel or change your current plan, please contact the administrator.",
-    "planStandard": "Standard Plan",
-    "priceStandard": "$35.00",
-    "perMonth": "/month",
-    "subscribed": "Subscribed",
-    "selectPlan": "Select Plan",
-    "alreadySubscribedError": "You are already subscribed to a plan. Additional purchases are not allowed."
-  }
-}
-</file>
-
-<file path="dictionaries/ja.json">
-{
-  "metadata": {
-    "title": "Nihongo Learning | 外国人のための日本語学習",
-    "description": "100本以上の高品質な授業動画が見放題。あなたのペースで確実な日本語力を身につけましょう。"
-  },
-  "home": {
-    "title": "Nihongo Learning",
-    "login": "ログイン",
-    "startFree": "無料ではじめる",
-    "heroTitle1": "あなたのペースで、",
-    "heroTitle2": "確実な日本語力を。",
-    "heroDescription": "100本以上の高品質な授業動画が見放題。体系化されたカリキュラムで、日常会話からビジネス日本語まで、最短ルートでマスターしましょう。",
-    "startNow": "今すぐ学習をスタート",
-    "viewPricing": "料金プランを見る",
-    "reasonsTitle": "選ばれる3つの理由",
-    "reasonsDesc": "効率的に日本語を習得するための、最適な環境が整っています。",
-    "feature1Title": "圧倒的な質の授業動画",
-    "feature1Desc": "プロの日本語教師による、わかりやすい解説動画。いつでもどこでも、何度でも見返すことができます。",
-    "feature2Title": "進捗がひと目でわかる",
-    "feature2Desc": "セクションごとの学習達成度をパーセンテージで可視化。モチベーションを維持しながら学習を進められます。",
-    "feature3Title": "選べる柔軟な料金プラン",
-    "feature3Desc": "あなたの学習ペースに合わせて、ライトから無制限のプレミアムまで、3つのプランをご用意しています。",
-    "pricingTitle": "シンプルな料金体系",
-    "pricingDesc": "登録は無料です。まずはアカウントを作成し、あなたに合ったプランをお選びください。",
-    "planLight": "ライト",
-    "planStandard": "スタンダード",
-    "planPremium": "プレミアム",
-    "perMonth": " / 月",
-    "mostPopular": "一番人気",
-    "featureProgress": "進捗管理機能",
-    "featureAllAccess": "全セクションへのアクセス",
-    "ctaTitle": "さあ、新しい言語の扉を開きましょう。",
-    "ctaDesc": "アカウント作成はわずか1分で完了します。",
-    "createFreeAccount": "無料でアカウントを作成する",
-    "footerRights": "Nihongo Learning. All rights reserved."
-  },
-  "auth": {
-    "loginTitle": "ログイン",
-    "signupTitle": "新規アカウント登録",
-    "emailLabel": "メールアドレス",
-    "emailPlaceholder": "you@example.com",
-    "passwordLabel": "パスワード",
-    "passwordPlaceholder": "••••••••",
-    "loginButton": "ログイン",
-    "signupButton": "登録する",
-    "toSignupText": "アカウントをお持ちでないですか？",
-    "toSignupLink": "新規登録はこちら",
-    "toLoginText": "すでにアカウントをお持ちですか？",
-    "toLoginLink": "ログインはこちら",
-    "loginError": "ログインに失敗しました。メールアドレスとパスワードをご確認ください。",
-    "signupError": "登録に失敗しました。",
-    "signupSuccess": "確認メールを送信しました。メール内のリンクをクリックして登録を完了してください。",
-    "showPassword": "表示",
-    "hidePassword": "隠す",
-    "forgotPassword": "パスワードをお忘れですか？",
-    "resetPasswordTitle": "パスワードの再設定",
-    "resetPasswordDesc": "登録したメールアドレスを入力してください。再設定用のリンクを送信します。",
-    "sendResetLink": "再設定リンクを送信する",
-    "resetLinkSent": "再設定用のメールを送信しました。メール内のリンクからパスワードを再設定してください。",
-    "updatePasswordTitle": "新しいパスワードの設定",
-    "updatePasswordButton": "パスワードを更新する",
-    "updatePasswordSuccess": "パスワードが更新されました。ダッシュボードへ移動します。",
-    "backToLogin": "ログイン画面に戻る",
-    "newPasswordLabel": "新しいパスワード",
-    "rateLimitError": "メール送信の上限に達しました。セキュリティのため、しばらく時間をおいてから再度お試しください。",
-    "generalError": "エラーが発生しました。メールアドレスをご確認の上、もう一度お試しください。"
-  },
-  "dashboard": {
-    "title": "学習ダッシュボード",
-    "adminButton": "管理画面へ",
-    "logoutButton": "ログアウト",
-    "welcome": "ようこそ、",
-    "honorific": " さん",
-    "subscriptionStatus": "現在のご契約状況",
-    "renewalDate": "更新日: ",
-    "manageSubscription": "契約内容の確認・変更",
-    "noSubscription": "プラン未契約です。",
-    "choosePlan": "プランを選択する",
-    "planStandard": "基本プラン（月25本）",
-    "planNone": "未契約",
-    "continueWatching": "続きから見る",
-    "recentlyWatched": "最近視聴",
-    "favorites": "お気に入り",
-    "watch": "▶ 視聴",
-    "courseList": "学習コース一覧",
-    "section": "セクション ",
-    "videosCount": " 本",
-    "progress": "進捗: ",
-    "completed": " 完了",
-    "remainingTickets": "追加視聴枠：残り {count} 本",
-    "buyTickets": "動画視聴枠を 25本購入する ($35) ",
-    "validTickets": "有効な追加チケット: {count} 枚",
-    "ticketStockLimit": "※合計100本までストック可能です"
-  },
-  "section": {
-    "backToDashboard": "← ダッシュボードへ戻る",
-    "title": "セクション {id} の動画一覧",
-    "viewed": "✓ 視聴済み",
-    "watchAgain": "もう一度見る",
-    "watch": "視聴する"
-  },
-  "video": {
-    "requireSubscription": "動画を視聴するにはプランの契約が必要です。",
-    "toPricing": "プラン選択画面へ",
-    "limitReachedTitle": "今月の視聴上限（{limit}本）に達しました",
-    "limitMessage": "新しい動画を視聴するには、来月の更新をお待ちいただくか、プランの変更をご検討ください。",
-    "backToDashboard": "← ダッシュボードに戻る",
-    "playerTitle": "授業動画再生",
-    "currentPlan": "現在のプラン",
-    "yearlyWatchCount": "今月の視聴本数",
-    "videosUnit": " 本",
-    "favoriteAdd": "お気に入りに追加",
-    "favoriteRemove": "お気に入り解除",
-    "watchCompleted": "✓ 視聴完了",
-    "useTicket": "追加チケットを1枚使って視聴する",
-    "noTickets": "視聴枠がありません。チケットを購入してください。"
-  },
-  "pricing": {
-    "title": "学習プランを選択",
-    "subtitle": "あなたの学習ペースに合わせたプランをお選びください。",
-    "noticeTitle": "お知らせ",
-    "noticeMessage": "お客様はすでにプランをご契約中です。現在のプランの解約や変更をご希望の場合は、管理者までお問い合わせください。",
-    "planStandard": "スタンダードプラン",
-    "priceStandard": "$35.00",
-    "perMonth": "/月",
-    "subscribed": "契約済み",
-    "selectPlan": "プランを選択",
-    "alreadySubscribedError": "すでにプランを契約中のため、追加購入はできません"
-  }
-}
-</file>
-
 <file path="eslint.config.mjs">
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals.js";
@@ -1628,6 +1486,92 @@ const eslintConfig = defineConfig([
 export default eslintConfig;
 </file>
 
+<file path="middleware.ts">
+import { createServerClient } from '@supabase/ssr'
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
+
+export async function middleware(request: NextRequest) {
+  // 1. レスポンスオブジェクトの初期化
+  let response = NextResponse.next({
+    request: { headers: request.headers },
+  })
+
+  // 2. Supabaseクライアントの初期化 (Server Component/Middleware用)
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => request.cookies.getAll(),
+        setAll: (cookiesToSet) => {
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+          response = NextResponse.next({ request })
+          cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options))
+        },
+      },
+    }
+  )
+
+  // セッション情報を取得
+  const { data: { user } } = await supabase.auth.getUser() // サーバー側で認証を検証
+  const { data: { session } } = await supabase.auth.getSession() // トークン取得用
+  const { pathname } = request.nextUrl
+
+  // ----------------------------------------------------------------
+  // A. 1アカウント1ログイン制限ロジック (ダッシュボードと動画ページが対象)
+  // ----------------------------------------------------------------
+  if (session && (pathname.includes('/dashboard') || pathname.includes('/video'))) {
+    // データベースから最新のセッションIDを取得
+    const { data: sub } = await supabase
+      .from('subscriptions')
+      .select(' current_session_id')
+      .eq('user_id', session.user.id)
+      .maybeSingle();
+
+    // ライト・スタンダードプランのみ判定
+    if (sub) {
+      // ★修正：アクセストークンではなく、端末にセットしたCookieのIDを確認
+      const currentTokenId = request.cookies.get('device_session_id')?.value;
+      
+      // DBのIDとCookieのIDが一致しない＝別の端末で新しくログインされた
+      if (sub.current_session_id && sub.current_session_id !== currentTokenId) {
+        // 強制ログアウト処理
+        await supabase.auth.signOut();
+        response.cookies.delete('device_session_id'); // Cookieのお掃除
+        const lang = pathname.startsWith('/en') ? 'en' : 'ja';
+        const redirectUrl = new URL(`/${lang}/login?message=other_device`, request.url);
+        return NextResponse.redirect(redirectUrl);
+      }
+    }
+  }
+
+  // ----------------------------------------------------------------
+  // B. 言語リダイレクトロジック (既存機能)
+  // ----------------------------------------------------------------
+  const locales = ['ja', 'en']
+  const defaultLocale = 'ja'
+  const pathnameHasLocale = locales.some(
+    (locale) => pathname.startsWith(`/${locale}/`) || pathname === `/${locale}`
+  )
+
+  if (!pathnameHasLocale) {
+    // ロケールが含まれていない場合は、デフォルト言語（/ja）を付与
+    const url = request.nextUrl.clone()
+    url.pathname = `/${defaultLocale}${pathname}`
+    return NextResponse.redirect(url)
+  }
+
+  return response
+}
+
+export const config = {
+  matcher: [
+    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+  ],
+}
+</file>
+
 <file path="next.config.ts">
 // next.config.ts
 import type { NextConfig } from "next";
@@ -1644,176 +1588,66 @@ const nextConfig: NextConfig = {
 export default nextConfig;
 </file>
 
-<file path="app/[lang]/page.tsx">
-import Link from 'next/link'
-import { getDictionary } from '@/utils/get-dictionary'
-import LanguageSwitcher from '@/app/components/LanguageSwitcher'
+<file path="app/[lang]/layout.tsx">
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+//@ts-ignore
+import "../globals.css";
+import { getDictionary } from '@/utils/get-dictionary';
 
-export const runtime = 'edge';
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
 
-export default async function HomePage({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }) {
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+// ★ 修正1：Promise<{ lang: string }> に変更
+export async function generateMetadata({ params }: { params: Promise<{ lang: string }> }): Promise<Metadata> {
   const { lang } = await params;
-  const dict = await getDictionary(lang);
+  // ★ ここで 'ja' | 'en' 型として扱うように指定（as 構文）
+  const dict = await getDictionary(lang as 'ja' | 'en');
+  
+  return {
+    title: dict.metadata.title,
+    description: dict.metadata.description,
 
+    icons: {
+      icon: '/icon.png',
+      apple: '/apple-icon.png',
+    },
+    openGraph: {
+      images: [
+        {
+          url: '/opengraph-image.png',
+          width: 1200,
+          height: 630,
+        }
+      ],
+    }
+  };
+}
+
+// ★ 修正2：Promise<{ lang: string }> に変更
+export default async function RootLayout({
+  children,
+  params,
+}: Readonly<{
+  children: React.ReactNode;
+  params: Promise<{ lang: string }>;
+}>) {
+  const { lang } = await params;
+  
   return (
-    <div className="min-h-screen bg-white font-sans text-gray-900">
-      
-      {/* ナビゲーションバー */}
-      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-xl leading-none">あ</span>
-            </div>
-            <span className="text-xl font-bold tracking-tight text-gray-800">{dict.home.title}</span>
-          </div>
-          <nav className="flex items-center">
-            <LanguageSwitcher currentLang={lang} />
-            <Link 
-              href={`/${lang}/login`} 
-              className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors mr-6"
-            >
-              {dict.home.login}
-            </Link>
-            <Link 
-              href={`/${lang}/login`} 
-              className="text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md transition-colors shadow-sm"
-            >
-              {dict.home.startFree}
-            </Link>
-          </nav>
-
-        </div>
-      </header>
-
-      <main>
-        {/* ヒーローセクション（ファーストビュー） */}
-        <section className="relative pt-24 pb-32 overflow-hidden bg-linear-to-b from-blue-50 to-white">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
-            <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight text-gray-900 mb-6 leading-tight">
-              {dict.home.heroTitle1}<br className="hidden md:block" />
-              <span className="text-transparent bg-clip-text bg-linear-to-r from-blue-600 to-cyan-500">
-                {dict.home.heroTitle2}
-              </span>
-            </h1>
-            <p className="mt-4 text-xl text-gray-600 max-w-2xl mx-auto mb-10">
-              {dict.home.heroDescription}
-            </p>
-            <div className="flex flex-col sm:flex-row justify-center gap-4">
-              <Link 
-                href={`/${lang}/login`} 
-                className="px-8 py-4 text-base font-bold text-white bg-blue-600 rounded-full hover:bg-blue-700 shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1"
-              >
-                {dict.home.startNow}
-              </Link>
-              <a 
-                href="#pricing" 
-                className="px-8 py-4 text-base font-bold text-blue-700 bg-blue-100 rounded-full hover:bg-blue-200 transition-all"
-              >
-                {dict.home.viewPricing}
-              </a>
-            </div>
-          </div>
-          
-          {/* 背景の装飾 */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-200 h-200 bg-blue-200/30 rounded-full blur-3xl -z-10 pointer-events-none"></div>
-        </section>
-
-        {/* 特徴・メリットセクション */}
-        <section className="py-20 bg-white">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="text-center mb-16">
-              <h2 className="text-3xl font-bold text-gray-900 mb-4">{dict.home.reasonsTitle}</h2>
-              <p className="text-gray-600">{dict.home.reasonsDesc}</p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
-              {/* 特徴1 */}
-              <div className="bg-gray-50 rounded-2xl p-8 border border-gray-100 hover:shadow-md transition-shadow">
-                <div className="w-14 h-14 bg-blue-100 rounded-xl flex items-center justify-center mb-6">
-                  <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-3">{dict.home.feature1Title}</h3>
-                <p className="text-gray-600">{dict.home.feature1Desc}</p>
-              </div>
-
-              {/* 特徴2 */}
-              <div className="bg-gray-50 rounded-2xl p-8 border border-gray-100 hover:shadow-md transition-shadow">
-                <div className="w-14 h-14 bg-cyan-100 rounded-xl flex items-center justify-center mb-6">
-                  <svg className="w-8 h-8 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-3">{dict.home.feature2Title}</h3>
-                <p className="text-gray-600">{dict.home.feature2Desc}</p>
-              </div>
-
-              {/* 特徴3 */}
-              <div className="bg-gray-50 rounded-2xl p-8 border border-gray-100 hover:shadow-md transition-shadow">
-                <div className="w-14 h-14 bg-indigo-100 rounded-xl flex items-center justify-center mb-6">
-                  <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-3">{dict.home.feature3Title}</h3>
-                <p className="text-gray-600">{dict.home.feature3Desc}</p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* 料金プランプレビューセクション */}
-        <section id="pricing" className="py-20 bg-gray-50 border-t border-gray-100">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="text-center mb-16">
-              <h2 className="text-3xl font-bold text-gray-900 mb-4">{dict.home.pricingTitle}</h2>
-              <p className="text-gray-600">{dict.home.pricingDesc}</p>
-            </div>
-
-            {/* グリッドを1カラムに変更し、中央に配置 */}
-            <div className="max-w-md mx-auto">
-              <div className="bg-white rounded-2xl p-8 border-2 border-blue-500 shadow-xl text-center relative">
-                <h3 className="text-xl font-bold text-blue-600 mb-2">{dict.home.planStandard}</h3>
-                <p className="text-5xl font-extrabold text-gray-900 mb-6">$35.00<span className="text-base font-normal text-gray-500">{dict.home.perMonth}</span></p>
-                <ul className="text-left space-y-4 mb-8 text-gray-600 font-medium">
-                  <li className="flex items-center"><span className="text-green-500 mr-3 text-xl">✓</span> {dict.home.featureProgress}</li>
-                  <li className="flex items-center"><span className="text-green-500 mr-3 text-xl">✓</span> {dict.home.featureAllAccess}</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* CTA（コールトゥアクション）セクション */}
-        <section className="py-20 bg-blue-600 text-white text-center">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h2 className="text-3xl font-bold mb-6">{dict.home.ctaTitle}</h2>
-            <p className="text-blue-100 text-lg mb-10">
-              {dict.home.ctaDesc}
-            </p>
-            <Link 
-              href={`/${lang}/login`} 
-              className="inline-block px-10 py-4 text-lg font-bold text-blue-600 bg-white rounded-full hover:bg-gray-50 shadow-lg transition-colors"
-            >
-              {dict.home.createFreeAccount}
-            </Link>
-          </div>
-        </section>
-      </main>
-
-      {/* フッター */}
-      <footer className="bg-gray-50 py-12 border-t border-gray-200">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-gray-400 rounded-md flex items-center justify-center">
-              <span className="text-white font-bold text-xs leading-none">あ</span>
-            </div>
-            <span className="text-lg font-bold text-gray-600">{dict.home.title}</span>
-          </div>
-          <p className="text-gray-400 text-sm">
-            © {new Date().getFullYear()} {dict.home.footerRights}
-          </p>
-        </div>
-      </footer>
-
-    </div>
-  )
+    <html lang={lang}>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+        {children}
+      </body>
+    </html>
+  );
 }
 </file>
 
@@ -1979,6 +1813,15 @@ export default async function VideoPage({
           </div>
         </div>
       </div>
+
+      <footer className="mt-20 py-8 border-t border-gray-100">
+      <div className="flex flex-col md:flex-row justify-center items-center gap-6 text-[11px] text-gray-400">
+        <Link href={`/${lang}/terms`} className="hover:text-blue-600 transition-colors">Terms of Service</Link>
+        <Link href={`/${lang}/privacy`} className="hover:text-blue-600 transition-colors">Privacy Policy</Link>
+        <Link href={`/${lang}/legal`} className="hover:text-blue-600 transition-colors">Legal Notice</Link>
+        <span>© {new Date().getFullYear()} Nihongo Learning</span>
+      </div>
+    </footer>
     </div>
   )
 }
@@ -2147,6 +1990,457 @@ export async function POST(request: Request) {
 }
 </file>
 
+<file path="app/[lang]/page.tsx">
+import Link from 'next/link'
+import { getDictionary } from '@/utils/get-dictionary'
+import LanguageSwitcher from '@/app/components/LanguageSwitcher'
+
+export const runtime = 'edge';
+
+export default async function HomePage({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }) {
+  const { lang } = await params;
+  const dict = await getDictionary(lang);
+
+  return (
+    <div className="min-h-screen bg-white font-sans text-gray-900">
+      
+      {/* ナビゲーションバー */}
+      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+              <span className="text-white font-bold text-xl leading-none">あ</span>
+            </div>
+            <span className="text-xl font-bold tracking-tight text-gray-800">{dict.home.title}</span>
+          </div>
+          <nav className="flex items-center">
+            <LanguageSwitcher currentLang={lang} />
+            <Link 
+              href={`/${lang}/login`} 
+              className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors mr-6"
+            >
+              {dict.home.login}
+            </Link>
+            <Link 
+              href={`/${lang}/login`} 
+              className="text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md transition-colors shadow-sm"
+            >
+              {dict.home.startFree}
+            </Link>
+          </nav>
+
+        </div>
+      </header>
+
+      <main>
+        {/* ヒーローセクション（ファーストビュー） */}
+        <section className="relative pt-24 pb-32 overflow-hidden bg-linear-to-b from-blue-50 to-white">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
+            <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight text-gray-900 mb-6 leading-tight">
+              {dict.home.heroTitle1}<br className="hidden md:block" />
+              <span className="text-transparent bg-clip-text bg-linear-to-r from-blue-600 to-cyan-500">
+                {dict.home.heroTitle2}
+              </span>
+            </h1>
+            <p className="mt-4 text-xl text-gray-600 max-w-2xl mx-auto mb-10">
+              {dict.home.heroDescription}
+            </p>
+            <div className="flex flex-col sm:flex-row justify-center gap-4">
+              <Link 
+                href={`/${lang}/login`} 
+                className="px-8 py-4 text-base font-bold text-white bg-blue-600 rounded-full hover:bg-blue-700 shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1"
+              >
+                {dict.home.startNow}
+              </Link>
+              <a 
+                href="#pricing" 
+                className="px-8 py-4 text-base font-bold text-blue-700 bg-blue-100 rounded-full hover:bg-blue-200 transition-all"
+              >
+                {dict.home.viewPricing}
+              </a>
+            </div>
+          </div>
+          
+          {/* 背景の装飾 */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-200 h-200 bg-blue-200/30 rounded-full blur-3xl -z-10 pointer-events-none"></div>
+        </section>
+
+        {/* 特徴・メリットセクション */}
+        <section className="py-20 bg-white">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center mb-16">
+              <h2 className="text-3xl font-bold text-gray-900 mb-4">{dict.home.reasonsTitle}</h2>
+              <p className="text-gray-600">{dict.home.reasonsDesc}</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
+              {/* 特徴1 */}
+              <div className="bg-gray-50 rounded-2xl p-8 border border-gray-100 hover:shadow-md transition-shadow">
+                <div className="w-14 h-14 bg-blue-100 rounded-xl flex items-center justify-center mb-6">
+                  <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-3">{dict.home.feature1Title}</h3>
+                <p className="text-gray-600">{dict.home.feature1Desc}</p>
+              </div>
+
+              {/* 特徴2 */}
+              <div className="bg-gray-50 rounded-2xl p-8 border border-gray-100 hover:shadow-md transition-shadow">
+                <div className="w-14 h-14 bg-cyan-100 rounded-xl flex items-center justify-center mb-6">
+                  <svg className="w-8 h-8 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-3">{dict.home.feature2Title}</h3>
+                <p className="text-gray-600">{dict.home.feature2Desc}</p>
+              </div>
+
+              {/* 特徴3 */}
+              <div className="bg-gray-50 rounded-2xl p-8 border border-gray-100 hover:shadow-md transition-shadow">
+                <div className="w-14 h-14 bg-indigo-100 rounded-xl flex items-center justify-center mb-6">
+                  <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-3">{dict.home.feature3Title}</h3>
+                <p className="text-gray-600">{dict.home.feature3Desc}</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* 料金プランプレビューセクション */}
+        <section id="pricing" className="py-20 bg-gray-50 border-t border-gray-100">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center mb-16">
+              <h2 className="text-3xl font-bold text-gray-900 mb-4">{dict.home.pricingTitle}</h2>
+              <p className="text-gray-600">{dict.home.pricingDesc}</p>
+            </div>
+
+            {/* グリッドを1カラムに変更し、中央に配置 */}
+            <div className="max-w-md mx-auto">
+              <div className="bg-white rounded-2xl p-8 border-2 border-blue-500 shadow-xl text-center relative">
+                <h3 className="text-xl font-bold text-blue-600 mb-2">{dict.home.planStandard}</h3>
+                <p className="text-5xl font-extrabold text-gray-900 mb-6">$35.00<span className="text-base font-normal text-gray-500">{dict.home.perMonth}</span></p>
+                <ul className="text-left space-y-4 mb-8 text-gray-600 font-medium">
+                  <li className="flex items-center"><span className="text-green-500 mr-3 text-xl">✓</span> {dict.home.featureProgress}</li>
+                  <li className="flex items-center"><span className="text-green-500 mr-3 text-xl">✓</span> {dict.home.featureAllAccess}</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* CTA（コールトゥアクション）セクション */}
+        <section className="py-20 bg-blue-600 text-white text-center">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+            <h2 className="text-3xl font-bold mb-6">{dict.home.ctaTitle}</h2>
+            <p className="text-blue-100 text-lg mb-10">
+              {dict.home.ctaDesc}
+            </p>
+            <Link 
+              href={`/${lang}/login`} 
+              className="inline-block px-10 py-4 text-lg font-bold text-blue-600 bg-white rounded-full hover:bg-gray-50 shadow-lg transition-colors"
+            >
+              {dict.home.createFreeAccount}
+            </Link>
+          </div>
+        </section>
+      </main>
+
+      {/* フッターの修正案 */}
+      <footer className="bg-gray-50 py-12 border-t border-gray-200">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-8">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 bg-gray-400 rounded-md flex items-center justify-center">
+                <span className="text-white font-bold text-xs">あ</span>
+              </div>
+              <span className="text-lg font-bold text-gray-600">{dict.home.title}</span>
+            </div>
+            
+            {/* 法的ページへのリンクを追加 */}
+            <div className="flex flex-wrap justify-center gap-6 text-sm text-gray-500">
+              <Link href={`/${lang}/terms`} className="hover:text-blue-600">Terms of Service</Link>
+              <Link href={`/${lang}/privacy`} className="hover:text-blue-600">Privacy Policy</Link>
+              <Link href={`/${lang}/legal`} className="hover:text-blue-600">Legal Notice (Act on Specified Commercial Transactions)</Link>
+            </div>
+
+            <p className="text-gray-400 text-sm">
+              © {new Date().getFullYear()} {dict.home.footerRights}
+            </p>
+          </div>
+        </div>
+      </footer>
+
+    </div>
+  )
+}
+</file>
+
+<file path="dictionaries/en.json">
+{
+  "metadata": {
+    "title": "Nihongo Learning | Japanese Learning Platform",
+    "description": "Unlimited access to over 100 high-quality video lessons. Master Japanese at your own pace."
+  },
+  "home": {
+    "title": "Nihongo Learning",
+    "login": "Log in",
+    "startFree": "Start for Free",
+    "heroTitle1": "Master Japanese",
+    "heroTitle2": "at your own pace.",
+    "heroDescription": "Unlimited access to over 100 high-quality video lessons. Master everything from daily conversation to business Japanese with our structured curriculum.",
+    "startNow": "Start Learning Now",
+    "viewPricing": "View Pricing Plans",
+    "reasonsTitle": "3 Reasons to Choose Us",
+    "reasonsDesc": "We provide the optimal environment for learning Japanese efficiently.",
+    "feature1Title": "High-Quality Video Lessons",
+    "feature1Desc": "Easy-to-understand explanations by professional Japanese teachers. Watch them anytime, anywhere, as many times as you like.",
+    "feature2Title": "Track Your Progress",
+    "feature2Desc": "Visualize your learning achievement for each section with percentages. Keep your motivation high as you learn.",
+    "feature3Title": "Flexible Pricing Plans",
+    "feature3Desc": "We offer 3 plans to suit your learning pace, from a Light plan to an unlimited Premium plan.",
+    "pricingTitle": "Simple Pricing",
+    "pricingDesc": "Registration is free. Create an account first, then choose the plan that suits you.",
+    "planLight": "Light",
+    "planStandard": "Standard",
+    "planPremium": "Premium",
+    "perMonth": " / month",
+    "mostPopular": "Most Popular",
+    "standardFeature1": "Watch up to 25 videos per month",
+    "featureProgress": "Progress tracking",
+    "featureAllAccess": "Access to all sections",
+    "ctaTitle": "Let's open the door to a new language.",
+    "ctaDesc": "Account creation takes only 1 minute.",
+    "createFreeAccount": "Create a Free Account",
+    "footerRights": "Nihongo Learning. All rights reserved."
+  },
+  "auth": {
+    "loginTitle": "Log In",
+    "signupTitle": "Create an Account",
+    "emailLabel": "Email Address",
+    "emailPlaceholder": "you@example.com",
+    "passwordLabel": "Password",
+    "passwordPlaceholder": "••••••••",
+    "loginButton": "Log In",
+    "signupButton": "Sign Up",
+    "toSignupText": "Don't have an account?",
+    "toSignupLink": "Sign up here",
+    "toLoginText": "Already have an account?",
+    "toLoginLink": "Log in here",
+    "loginError": "Failed to log in. Please check your email and password.",
+    "signupError": "Failed to sign up.",
+    "signupSuccess": "A confirmation email has been sent. Please click the link in the email to complete registration.",
+    "showPassword": "Show",
+    "hidePassword": "Hide",
+    "forgotPassword": "Forgot your password?",
+    "resetPasswordTitle": "Reset Password",
+    "resetPasswordDesc": "Enter your registered email address. We will send you a link to reset your password.",
+    "sendResetLink": "Send Reset Link",
+    "resetLinkSent": "A password reset email has been sent. Please click the link in the email to reset your password.",
+    "updatePasswordTitle": "Set New Password",
+    "updatePasswordButton": "Update Password",
+    "updatePasswordSuccess": "Your password has been updated. Redirecting to the dashboard...",
+    "backToLogin": "Back to Login",
+    "newPasswordLabel": "New Password",
+    "rateLimitError": "Email sending limit reached. For security reasons, please wait a while before trying again.",
+    "generalError": "An error occurred. Please check your email address and try again.",
+    "agreeTerms": "I agree to the Terms of Service and Privacy Policy"
+  },
+  "dashboard": {
+    "title": "Learning Dashboard",
+    "adminButton": "Admin Dashboard",
+    "logoutButton": "Log Out",
+    "welcome": "Welcome, ",
+    "honorific": "",
+    "subscriptionStatus": "Current Subscription Status",
+    "renewalDate": "Renewal Date: ",
+    "manageSubscription": "Manage Subscription",
+    "noSubscription": "No active subscription.",
+    "choosePlan": "Choose a Plan",
+    "planStandard": "Basic Plan (25 videos/mo)",
+    "planNone": "Unsubscribed",
+    "continueWatching": "Continue Watching",
+    "recentlyWatched": "Recently Watched",
+    "favorites": "Favorites",
+    "watch": "▶ Watch",
+    "courseList": "Course List",
+    "section": "Section ",
+    "videosCount": " videos",
+    "progress": "Progress: ",
+    "completed": " Completed",
+    "remainingTickets": "Extra Tickets: {count} remaining",
+    "buyTickets": "Buy 25 Extra Video Tickets ($35.00)",
+    "validTickets": "Valid Extra Tickets: {count}",
+    "ticketStockLimit": "* Maximum stock is 100 tickets."
+  },
+  "section": {
+    "backToDashboard": "← Back to Dashboard",
+    "title": "Videos for Section {id}",
+    "viewed": "✓ Viewed",
+    "watchAgain": "Watch Again",
+    "watch": "Watch"
+  },
+  "video": {
+    "requireSubscription": "A subscription plan is required to watch videos.",
+    "toPricing": "Go to Pricing",
+    "limitReachedTitle": "Monthly viewing limit reached ({limit} videos)",
+    "limitMessage": "To watch more videos, please wait for next year's renewal or consider upgrading your plan or purchases additional Tickets.",
+    "backToDashboard": "← Back to Dashboard",
+    "playerTitle": "Video Player",
+    "currentPlan": "Current Plan",
+    "yearlyWatchCount": "Monthly Videos Watched",
+    "unlimited": "Unlimited",
+    "videosUnit": " videos",
+    "favoriteAdd": "Add to Favorites",
+    "favoriteRemove": "Remove Favorite",
+    "watchCompleted": "✓ Completed"
+  },
+  "pricing": {
+    "title": "Choose a Learning Plan",
+    "subtitle": "Select the plan that best fits your learning pace.",
+    "noticeTitle": "Notice",
+    "noticeMessage": "You are already subscribed to a plan. If you wish to cancel or change your current plan, please contact the administrator.",
+    "planStandard": "Standard Plan",
+    "priceStandard": "$35.00",
+    "perMonth": "/month",
+    "subscribed": "Subscribed",
+    "selectPlan": "Select Plan",
+    "alreadySubscribedError": "You are already subscribed to a plan. Additional purchases are not allowed."
+  }
+}
+</file>
+
+<file path="dictionaries/ja.json">
+{
+  "metadata": {
+    "title": "Nihongo Learning | 外国人のための日本語学習",
+    "description": "100本以上の高品質な授業動画が見放題。あなたのペースで確実な日本語力を身につけましょう。"
+  },
+  "home": {
+    "title": "Nihongo Learning",
+    "login": "ログイン",
+    "startFree": "無料ではじめる",
+    "heroTitle1": "あなたのペースで、",
+    "heroTitle2": "確実な日本語力を。",
+    "heroDescription": "100本以上の高品質な授業動画が見放題。体系化されたカリキュラムで、日常会話からビジネス日本語まで、最短ルートでマスターしましょう。",
+    "startNow": "今すぐ学習をスタート",
+    "viewPricing": "料金プランを見る",
+    "reasonsTitle": "選ばれる3つの理由",
+    "reasonsDesc": "効率的に日本語を習得するための、最適な環境が整っています。",
+    "feature1Title": "圧倒的な質の授業動画",
+    "feature1Desc": "プロの日本語教師による、わかりやすい解説動画。いつでもどこでも、何度でも見返すことができます。",
+    "feature2Title": "進捗がひと目でわかる",
+    "feature2Desc": "セクションごとの学習達成度をパーセンテージで可視化。モチベーションを維持しながら学習を進められます。",
+    "feature3Title": "選べる柔軟な料金プラン",
+    "feature3Desc": "あなたの学習ペースに合わせて、ライトから無制限のプレミアムまで、3つのプランをご用意しています。",
+    "pricingTitle": "シンプルな料金体系",
+    "pricingDesc": "登録は無料です。まずはアカウントを作成し、あなたに合ったプランをお選びください。",
+    "planLight": "ライト",
+    "planStandard": "スタンダード",
+    "planPremium": "プレミアム",
+    "perMonth": " / 月",
+    "mostPopular": "一番人気",
+    "featureProgress": "進捗管理機能",
+    "featureAllAccess": "全セクションへのアクセス",
+    "ctaTitle": "さあ、新しい言語の扉を開きましょう。",
+    "ctaDesc": "アカウント作成はわずか1分で完了します。",
+    "createFreeAccount": "無料でアカウントを作成する",
+    "footerRights": "Nihongo Learning. All rights reserved."
+  },
+  "auth": {
+    "loginTitle": "ログイン",
+    "signupTitle": "新規アカウント登録",
+    "emailLabel": "メールアドレス",
+    "emailPlaceholder": "you@example.com",
+    "passwordLabel": "パスワード",
+    "passwordPlaceholder": "••••••••",
+    "loginButton": "ログイン",
+    "signupButton": "登録する",
+    "toSignupText": "アカウントをお持ちでないですか？",
+    "toSignupLink": "新規登録はこちら",
+    "toLoginText": "すでにアカウントをお持ちですか？",
+    "toLoginLink": "ログインはこちら",
+    "loginError": "ログインに失敗しました。メールアドレスとパスワードをご確認ください。",
+    "signupError": "登録に失敗しました。",
+    "signupSuccess": "確認メールを送信しました。メール内のリンクをクリックして登録を完了してください。",
+    "showPassword": "表示",
+    "hidePassword": "隠す",
+    "forgotPassword": "パスワードをお忘れですか？",
+    "resetPasswordTitle": "パスワードの再設定",
+    "resetPasswordDesc": "登録したメールアドレスを入力してください。再設定用のリンクを送信します。",
+    "sendResetLink": "再設定リンクを送信する",
+    "resetLinkSent": "再設定用のメールを送信しました。メール内のリンクからパスワードを再設定してください。",
+    "updatePasswordTitle": "新しいパスワードの設定",
+    "updatePasswordButton": "パスワードを更新する",
+    "updatePasswordSuccess": "パスワードが更新されました。ダッシュボードへ移動します。",
+    "backToLogin": "ログイン画面に戻る",
+    "newPasswordLabel": "新しいパスワード",
+    "rateLimitError": "メール送信の上限に達しました。セキュリティのため、しばらく時間をおいてから再度お試しください。",
+    "generalError": "エラーが発生しました。メールアドレスをご確認の上、もう一度お試しください。",
+    "agreeTerms": "利用規約とプライバシーポリシーに同意します"
+  },
+  "dashboard": {
+    "title": "学習ダッシュボード",
+    "adminButton": "管理画面へ",
+    "logoutButton": "ログアウト",
+    "welcome": "ようこそ、",
+    "honorific": " さん",
+    "subscriptionStatus": "現在のご契約状況",
+    "renewalDate": "更新日: ",
+    "manageSubscription": "契約内容の確認・変更",
+    "noSubscription": "プラン未契約です。",
+    "choosePlan": "プランを選択する",
+    "planStandard": "基本プラン（月25本）",
+    "planNone": "未契約",
+    "continueWatching": "続きから見る",
+    "recentlyWatched": "最近視聴",
+    "favorites": "お気に入り",
+    "watch": "▶ 視聴",
+    "courseList": "学習コース一覧",
+    "section": "セクション ",
+    "videosCount": " 本",
+    "progress": "進捗: ",
+    "completed": " 完了",
+    "remainingTickets": "追加視聴枠：残り {count} 本",
+    "buyTickets": "動画視聴枠を 25本購入する ($35) ",
+    "validTickets": "有効な追加チケット: {count} 枚",
+    "ticketStockLimit": "※合計100本までストック可能です"
+  },
+  "section": {
+    "backToDashboard": "← ダッシュボードへ戻る",
+    "title": "セクション {id} の動画一覧",
+    "viewed": "✓ 視聴済み",
+    "watchAgain": "もう一度見る",
+    "watch": "視聴する"
+  },
+  "video": {
+    "requireSubscription": "動画を視聴するにはプランの契約が必要です。",
+    "toPricing": "プラン選択画面へ",
+    "limitReachedTitle": "今月の視聴上限（{limit}本）に達しました",
+    "limitMessage": "新しい動画を視聴するには、来月の更新をお待ちいただくか、プランの変更をご検討ください。",
+    "backToDashboard": "← ダッシュボードに戻る",
+    "playerTitle": "授業動画再生",
+    "currentPlan": "現在のプラン",
+    "yearlyWatchCount": "今月の視聴本数",
+    "videosUnit": " 本",
+    "favoriteAdd": "お気に入りに追加",
+    "favoriteRemove": "お気に入り解除",
+    "watchCompleted": "✓ 視聴完了",
+    "useTicket": "追加チケットを1枚使って視聴する",
+    "noTickets": "視聴枠がありません。チケットを購入してください。"
+  },
+  "pricing": {
+    "title": "学習プランを選択",
+    "subtitle": "あなたの学習ペースに合わせたプランをお選びください。",
+    "noticeTitle": "お知らせ",
+    "noticeMessage": "お客様はすでにプランをご契約中です。現在のプランの解約や変更をご希望の場合は、管理者までお問い合わせください。",
+    "planStandard": "スタンダードプラン",
+    "priceStandard": "$35.00",
+    "perMonth": "/月",
+    "subscribed": "契約済み",
+    "selectPlan": "プランを選択",
+    "alreadySubscribedError": "すでにプランを契約中のため、追加購入はできません"
+  }
+}
+</file>
+
 <file path="app/[lang]/pricing/page.tsx">
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
@@ -2226,142 +2520,6 @@ export default async function PricingPage({ params }: { params: Promise<{ lang: 
       </div>
     </div>
   )
-}
-</file>
-
-<file path="app/api/webhook/route.ts">
-import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js' // ★変更: 公式の標準クライアントを使用します
-import Stripe from 'stripe'
-
-export const runtime = 'edge';
-
-export async function POST(req: Request) {
-
-
-  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
-    apiVersion: '2026-02-25.clover',
-    httpClient: Stripe.createFetchHttpClient(),
-  })
-  const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET as string
-  const body = await req.text()
-  const sig = req.headers.get('stripe-signature') as string
-
-  let event: Stripe.Event
-
-  try {
-    // 変更: 同期メソッドから非同期メソッド（Edge/Web Crypto対応）へ変更します
-    event = await stripe.webhooks.constructEventAsync(body, sig, endpointSecret)
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown error'
-    console.error(`Webhook Error: ${message}`)
-    return NextResponse.json({ error: `Webhook Error: ${message}` }, { status: 400 })
-  }
-
-  // ★重要: 管理者権限（Service Role）でSupabaseクライアントを初期化します
-  // これにより、ログイン情報（Cookie）がないWebhookからの通信でもデータベースを操作できます
-  const supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-
-  // 1. 【最優先】チェックアウト完了イベントの処理
-  console.log('--- Webhook受信開始 ---');
-  console.log('Event Type:', event.type);
-
-  if (event.type === 'checkout.session.completed') {
-    const session = event.data.object as Stripe.Checkout.Session;
-    
-    // ★重要：ここに出る値をチェックしてください
-    console.log('受信したメタデータ:', session.metadata);
-    console.log('判定用の購入タイプ:', session.metadata?.purchaseType);
-
-    if (session.metadata?.purchaseType === 'addon') {
-      console.log('★アドオン購入（チケット）のブロックに進入しました');
-      
-      const userId = session.metadata.userId;
-      if (userId) {
-        const expiresAt = new Date();
-        expiresAt.setFullYear(expiresAt.getFullYear() + 1);
-
-        // INSERT実行
-        const { data, error } = await supabaseAdmin.from('video_credits').insert({
-          user_id: userId,
-          amount: 25,
-          remaining: 25,
-          expires_at: expiresAt.toISOString(),
-        }).select();
-
-        if (error) {
-          console.error('❌DB挿入エラー:', error.message);
-        } else {
-          console.log('✅DB挿入成功！挿入されたデータ:', data);
-        }
-      } else {
-        console.log('❌userIdがメタデータにありません');
-      }
-      return NextResponse.json({ received: true });
-    } else {
-      console.log('⚠️ purchaseTypeがaddonではありません（サブスクとして処理されます）');
-    }
-  }
-
-  // 2. 【サブスクリプション用】更新・削除・新規契約のロジック
-  if (
-    event.type === 'checkout.session.completed' ||
-    event.type === 'customer.subscription.updated' ||
-    event.type === 'customer.subscription.deleted'
-  ) {
-    const object = event.data.object as Stripe.Checkout.Session | Stripe.Subscription
-    
-    let stripeSubscriptionId: string
-    if (event.type === 'checkout.session.completed') {
-      const session = object as Stripe.Checkout.Session
-      stripeSubscriptionId = session.subscription as string
-    } else {
-      const subscription = object as Stripe.Subscription
-      stripeSubscriptionId = subscription.id
-    }
-
-    // アドオンでない場合のみ、Stripeから詳細なサブスク情報を取得
-    if (stripeSubscriptionId) {
-      const fullSubscription = await stripe.subscriptions.retrieve(stripeSubscriptionId) as Stripe.Subscription
-      const subscriptionItem = fullSubscription.items.data[0]
-      const planId = subscriptionItem.price.id
-
-      let userId: string | undefined
-      if (event.type === 'checkout.session.completed') {
-        const session = object as Stripe.Checkout.Session
-        userId = session.metadata?.userId
-      } else {
-        const { data: existingSub } = await supabaseAdmin
-          .from('subscriptions')
-          .select('user_id')
-          .eq('stripe_subscription_id', stripeSubscriptionId)
-          .maybeSingle()
-        userId = existingSub?.user_id
-      }
-
-      if (userId) {
-        let planType = 'light'
-        if (planId === process.env.STRIPE_PRICE_ID_STANDARD) planType = 'standard'
-        if (planId === process.env.STRIPE_PRICE_ID_PREMIUM) planType = 'premium'
-
-        await supabaseAdmin.from('subscriptions').upsert({
-          user_id: userId,
-          stripe_subscription_id: stripeSubscriptionId,
-          plan_type: planType,
-          status: fullSubscription.status,
-          current_period_start: new Date(subscriptionItem.current_period_start * 1000).toISOString(),
-          current_period_end: new Date(subscriptionItem.current_period_end * 1000).toISOString(),
-        }, { onConflict: 'user_id' })
-        
-        console.log(`★サブスクDB更新完了: ${planType}`)
-      }
-    }
-  }
-
-  return NextResponse.json({ received: true })
 }
 </file>
 
@@ -2640,6 +2798,140 @@ export default async function UpdatePasswordPage({
 }
 </file>
 
+<file path="app/api/webhook/route.ts">
+import { NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js' // ★変更: 公式の標準クライアントを使用します
+import Stripe from 'stripe'
+
+export const runtime = 'edge';
+
+export async function POST(req: Request) {
+
+
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
+    apiVersion: '2026-02-25.clover',
+    httpClient: Stripe.createFetchHttpClient(),
+  })
+  const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET as string
+  const body = await req.text()
+  const sig = req.headers.get('stripe-signature') as string
+
+  let event: Stripe.Event
+
+  try {
+    // 変更: 同期メソッドから非同期メソッド（Edge/Web Crypto対応）へ変更します
+    event = await stripe.webhooks.constructEventAsync(body, sig, endpointSecret)
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error'
+    console.error(`Webhook Error: ${message}`)
+    return NextResponse.json({ error: `Webhook Error: ${message}` }, { status: 400 })
+  }
+
+  // ★重要: 管理者権限（Service Role）でSupabaseクライアントを初期化します
+  // これにより、ログイン情報（Cookie）がないWebhookからの通信でもデータベースを操作できます
+  const supabaseAdmin = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+
+  // 1. 【最優先】チェックアウト完了イベントの処理
+  console.log('--- Webhook受信開始 ---');
+  console.log('Event Type:', event.type);
+
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object as Stripe.Checkout.Session;
+    
+    // ★重要：ここに出る値をチェックしてください
+    console.log('受信したメタデータ:', session.metadata);
+    console.log('判定用の購入タイプ:', session.metadata?.purchaseType);
+
+    if (session.metadata?.purchaseType === 'addon') {
+      console.log('★アドオン購入（チケット）のブロックに進入しました');
+      
+      const userId = session.metadata.userId;
+      if (userId) {
+        const expiresAt = new Date();
+        expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+
+        // INSERT実行
+        const { data, error } = await supabaseAdmin.from('video_credits').insert({
+          user_id: userId,
+          amount: 25,
+          remaining: 25,
+          expires_at: expiresAt.toISOString(),
+        }).select();
+
+        if (error) {
+          console.error('❌DB挿入エラー:', error.message);
+        } else {
+          console.log('✅DB挿入成功！挿入されたデータ:', data);
+        }
+      } else {
+        console.log('❌userIdがメタデータにありません');
+      }
+      return NextResponse.json({ received: true });
+    } else {
+      console.log('⚠️ purchaseTypeがaddonではありません（サブスクとして処理されます）');
+    }
+  }
+
+  // 2. 【サブスクリプション用】更新・削除・新規契約のロジック
+  if (
+    event.type === 'checkout.session.completed' ||
+    event.type === 'customer.subscription.updated' ||
+    event.type === 'customer.subscription.deleted'
+  ) {
+    const object = event.data.object as Stripe.Checkout.Session | Stripe.Subscription
+    
+    let stripeSubscriptionId: string
+    if (event.type === 'checkout.session.completed') {
+      const session = object as Stripe.Checkout.Session
+      stripeSubscriptionId = session.subscription as string
+    } else {
+      const subscription = object as Stripe.Subscription
+      stripeSubscriptionId = subscription.id
+    }
+
+    // アドオンでない場合のみ、Stripeから詳細なサブスク情報を取得
+    if (stripeSubscriptionId) {
+      const fullSubscription = await stripe.subscriptions.retrieve(stripeSubscriptionId) as Stripe.Subscription
+      const subscriptionItem = fullSubscription.items.data[0]
+      const planId = subscriptionItem.price.id
+
+      let userId: string | undefined
+      if (event.type === 'checkout.session.completed') {
+        const session = object as Stripe.Checkout.Session
+        userId = session.metadata?.userId
+      } else {
+        const { data: existingSub } = await supabaseAdmin
+          .from('subscriptions')
+          .select('user_id')
+          .eq('stripe_subscription_id', stripeSubscriptionId)
+          .maybeSingle()
+        userId = existingSub?.user_id
+      }
+
+      if (userId) {
+        const planType = 'standard';
+
+        await supabaseAdmin.from('subscriptions').upsert({
+          user_id: userId,
+          stripe_subscription_id: stripeSubscriptionId,
+          plan_type: planType,
+          status: fullSubscription.status,
+          current_period_start: new Date(subscriptionItem.current_period_start * 1000).toISOString(),
+          current_period_end: new Date(subscriptionItem.current_period_end * 1000).toISOString(),
+        }, { onConflict: 'user_id' })
+        
+        console.log(`★サブスクDB更新完了: ${planType}`)
+      }
+    }
+  }
+
+  return NextResponse.json({ received: true })
+}
+</file>
+
 <file path="tsconfig.json">
 {
   "compilerOptions": {
@@ -2744,11 +3036,34 @@ export default async function SignupPage({
           showText={dict.auth.showPassword}
           hideText={dict.auth.hidePassword}
         />
+
+        <div className="flex items-start gap-3 mt-4">
+          <input
+            type="checkbox"
+            id="agree"
+            required
+            className="mt-1 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+          />
+          <label htmlFor="agree" className="text-xs text-gray-600 leading-normal">
+            {dict.auth.agreeTerms} / {dict.auth.agreeTerms}
+            <div className="mt-1">
+              <Link href={`/${lang}/terms`} className="text-blue-600 hover:underline">Terms</Link>
+              {' / '}
+              <Link href={`/${lang}/privacy`} className="text-blue-600 hover:underline">Privacy</Link>
+            </div>
+          </label>
+        </div>
         
         <div className="flex flex-col gap-2 mt-6">
           <button type="submit" className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors font-medium">
             {dict.auth.signupButton}
           </button>
+        </div>
+
+        <div className="mt-4 text-center">
+          <p className="text-[10px] text-gray-400">
+            By logging in, you agree to our Terms of Service and Privacy Policy.
+          </p>
         </div>
 
         <div className="mt-4 text-center text-sm text-gray-600 border-t border-gray-100 pt-4">
@@ -3023,6 +3338,25 @@ export default async function DashboardPage({ params }: { params: Promise<{ lang
           ))}
         </div>
       </div>
+
+      {/* ここから追加: ダッシュボード用のミニフッター */}
+      <div className="mt-16 pt-8 pb-4 border-t border-gray-200">
+        <div className="flex flex-col md:flex-row justify-center items-center gap-4 md:gap-8 text-xs text-gray-500">
+          <Link href={`/${lang}/terms`} className="hover:text-blue-600 transition-colors">
+            Terms of Service / 利用規約
+          </Link>
+          <Link href={`/${lang}/privacy`} className="hover:text-blue-600 transition-colors">
+            Privacy Policy / プライバシーポリシー
+          </Link>
+          <Link href={`/${lang}/legal`} className="hover:text-blue-600 transition-colors">
+            Legal Notice / 特定商取引法に基づく表記
+          </Link>
+          <span className="mt-4 md:mt-0 text-gray-400">
+            © {new Date().getFullYear()} Nihongo Learning
+          </span>
+        </div>
+      </div>
+
     </div>
   )
 }
