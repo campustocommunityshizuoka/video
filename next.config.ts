@@ -1,5 +1,21 @@
 import type { NextConfig } from "next";
 
+// ★追加：Nihon Work Base専用の強力なCSP（セキュリティバリア）の設定
+// 許可する外部サービス（Stripe, Vimeo, Supabase）を明記しています
+const cspHeader = `
+  default-src 'self';
+  script-src 'self' 'unsafe-eval' 'unsafe-inline' https://js.stripe.com;
+  style-src 'self' 'unsafe-inline';
+  img-src 'self' blob: data: https://*.supabase.co https://i.vimeocdn.com;
+  font-src 'self';
+  object-src 'none';
+  base-uri 'self';
+  form-action 'self';
+  frame-ancestors 'none';
+  frame-src 'self' https://player.vimeo.com https://js.stripe.com https://hooks.stripe.com;
+  connect-src 'self' https://*.supabase.co https://api.stripe.com;
+`.replace(/\s{2,}/g, ' ').trim();
+
 const nextConfig: NextConfig = {
   serverActions: {
     allowedOrigins: [
@@ -7,29 +23,33 @@ const nextConfig: NextConfig = {
       'https://easy-japanese.shizuoka-connect.com'
     ]
   },
-  // ▼▼▼ ここからセキュリティヘッダーの設定を追加 ▼▼▼
   async headers() {
     return [
       {
-        source: '/(.*)', // サイト内のすべてのページに適用
+        source: '/(.*)',
         headers: [
           {
-            // 他のサイトの iframe 内でこのサイトを表示させない（クリックジャッキング対策）
+            // CSPヘッダーの適用（-25点の解消）
+            key: 'Content-Security-Policy',
+            value: cspHeader,
+          },
+          {
+            // クリックジャッキング対策（-20点の解消）
             key: 'X-Frame-Options',
             value: 'DENY',
           },
           {
-            // ブラウザにファイルのMIMEタイプを推測させない
+            // MIMEタイプの偽装防止（-5点の解消）
             key: 'X-Content-Type-Options',
             value: 'nosniff',
           },
           {
-            // HTTPS通信を強制する（中間者攻撃対策）
+            // HTTPSの強制
             key: 'Strict-Transport-Security',
             value: 'max-age=31536000; includeSubDomains',
           },
           {
-            // 別のサイトへ移動する際に余計な情報を送らない
+            // 情報漏洩の防止
             key: 'Referrer-Policy',
             value: 'strict-origin-when-cross-origin',
           },
