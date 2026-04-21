@@ -770,92 +770,6 @@ export async function createClient() {
 }
 </file>
 
-<file path="app/[lang]/section/[id]/page.tsx">
-import { createClient } from '@/utils/supabase/server'
-import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import { getDictionary } from '@/utils/get-dictionary'
-import LanguageSwitcher from '@/app/components/LanguageSwitcher'
-
-export const runtime = 'edge';
-
-export default async function SectionPage({ 
-  params 
-}: { 
-  params: Promise<{ lang: 'ja' | 'en', id: string }> 
-}) {
-  const { lang, id: sectionId } = await params
-  const dict = await getDictionary(lang)
-
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect(`/${lang}/login`)
-
-  const { data: videos } = await supabase
-    .from('videos').select('*').like('title', `${sectionId}-%`)
-
-  const sortedVideos = videos?.sort((a, b) => {
-    const aNum = parseInt(a.title.match(/-(\d+)/)?.[1] || '0')
-    const bNum = parseInt(b.title.match(/-(\d+)/)?.[1] || '0')
-    return aNum - bNum
-  }) || []
-
-  const { data: history } = await supabase
-    .from('viewing_history').select('vimeo_video_id').eq('user_id', user.id)
-  
-  const viewedIds = new Set(history?.map(h => h.vimeo_video_id) || [])
-
-  return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-8 relative">
-      <div className="absolute top-6 right-6">
-        <LanguageSwitcher currentLang={lang} />
-      </div>
-
-      <div className="max-w-6xl mx-auto mt-8">
-        <div className="mb-8">
-          <Link href={`/${lang}/dashboard`} className="text-blue-600 hover:underline text-sm mb-4 inline-block">
-            {dict.section.backToDashboard}
-          </Link>
-          <h1 className="text-2xl font-bold text-gray-800">
-            {dict.section.title.replace('{id}', sectionId)}
-          </h1>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {sortedVideos.map((video) => {
-            const isViewed = viewedIds.has(video.vimeo_id)
-            return (
-              <div key={video.id} className="bg-white rounded-lg border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">
-                <div className="aspect-video bg-gray-100 flex items-center justify-center relative">
-                  {video.thumbnail_url ? (
-                    <img src={video.thumbnail_url} alt={video.title} className="object-cover w-full h-full" />
-                  ) : (
-                    <span className="text-gray-400 font-medium">Video</span>
-                  )}
-                  {isViewed && (
-                    <div className="absolute top-2 right-2 bg-green-500 text-white text-xs px-2 py-1 rounded shadow-sm font-bold">
-                      {dict.section.viewed}
-                    </div>
-                  )}
-                </div>
-                <div className="p-4 flex flex-col justify-between">
-                  <h3 className="font-bold text-gray-900 mb-4">{video.title}</h3>
-                  <Link href={`/${lang}/video/${video.vimeo_id}`} className={`block w-full text-center px-4 py-2 font-medium text-sm rounded-md transition-colors ${
-                    isViewed ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white'
-                  }`}>
-                    {isViewed ? dict.section.watchAgain : dict.section.watch}
-                  </Link>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-    </div>
-  )
-}
-</file>
-
 <file path="app/components/PasswordInput.tsx">
 'use client'
 
@@ -1200,6 +1114,103 @@ export default async function PrivacyPage({ params }: { params: Promise<{ lang: 
           </section>
         </div>
       </div>
+    </div>
+  )
+}
+</file>
+
+<file path="app/[lang]/section/[id]/page.tsx">
+import { createClient } from '@/utils/supabase/server'
+import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import { getDictionary } from '@/utils/get-dictionary'
+import LanguageSwitcher from '@/app/components/LanguageSwitcher'
+
+export const runtime = 'edge';
+
+export default async function SectionPage({ 
+  params 
+}: { 
+  params: Promise<{ lang: 'ja' | 'en', id: string }> 
+}) {
+  const { lang, id: sectionId } = await params
+  const dict = await getDictionary(lang)
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect(`/${lang}/login`)
+
+  const { data: videos } = await supabase
+    .from('videos').select('*').like('title', `${sectionId}-%`)
+
+  const sortedVideos = videos?.sort((a, b) => {
+    const aNum = parseInt(a.title.match(/-(\d+)/)?.[1] || '0')
+    const bNum = parseInt(b.title.match(/-(\d+)/)?.[1] || '0')
+    return aNum - bNum
+  }) || []
+
+  const { data: history } = await supabase
+    .from('viewing_history').select('vimeo_video_id').eq('user_id', user.id)
+  
+  const viewedIds = new Set(history?.map(h => h.vimeo_video_id) || [])
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-4 md:p-8 relative">
+      <div className="absolute top-6 right-6">
+        <LanguageSwitcher currentLang={lang} />
+      </div>
+
+      <div className="max-w-6xl mx-auto mt-8">
+        <div className="mb-8">
+          <Link href={`/${lang}/dashboard`} className="text-blue-600 hover:underline text-sm mb-4 inline-block">
+            {dict.section.backToDashboard}
+          </Link>
+          <h1 className="text-2xl font-bold text-gray-800">
+            {dict.section.title.replace('{id}', sectionId)}
+          </h1>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {sortedVideos.map((video) => {
+            const isViewed = viewedIds.has(video.vimeo_id)
+            return (
+              <div key={video.id} className="bg-white rounded-lg border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">
+                <div className="aspect-video bg-gray-100 flex items-center justify-center relative">
+                  {video.thumbnail_url ? (
+                    <img src={video.thumbnail_url} alt={video.title} className="object-cover w-full h-full" />
+                  ) : (
+                    <span className="text-gray-400 font-medium">Video</span>
+                  )}
+                  {isViewed && (
+                    <div className="absolute top-2 right-2 bg-green-500 text-white text-xs px-2 py-1 rounded shadow-sm font-bold">
+                      {dict.section.viewed}
+                    </div>
+                  )}
+                </div>
+                <div className="p-4 flex flex-col justify-between">
+                  <h3 className="font-bold text-gray-900 mb-4">{video.title}</h3>
+                  <Link href={`/${lang}/video/${video.vimeo_id}`} className={`block w-full text-center px-4 py-2 font-medium text-sm rounded-md transition-colors ${
+                    isViewed ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white'
+                  }`}>
+                    {isViewed ? dict.section.watchAgain : dict.section.watch}
+                  </Link>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      // ページの一番下に追加
+      <footer className="mt-16 py-8 border-t border-gray-200">
+        <div className="flex flex-col md:flex-row justify-center items-center gap-6 text-[11px] text-gray-400">
+          <Link href={`/${lang}/terms`} className="hover:text-blue-600 transition-colors">Terms of Service</Link>
+          <Link href={`/${lang}/privacy`} className="hover:text-blue-600 transition-colors">Privacy Policy</Link>
+          <Link href={`/${lang}/legal`} className="hover:text-blue-600 transition-colors">Legal Notice</Link>
+          <span>© {new Date().getFullYear()} Nihongo Learning</span>
+        </div>
+      </footer>
+      
     </div>
   )
 }
@@ -1651,182 +1662,6 @@ export default async function RootLayout({
 }
 </file>
 
-<file path="app/[lang]/video/[id]/page.tsx">
-import { createClient } from '@/utils/supabase/server'
-import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import VideoPlayer from './VideoPlayer'
-import FavoriteButton from './FavoriteButton'
-import { getDictionary } from '@/utils/get-dictionary'
-import LanguageSwitcher from '@/app/components/LanguageSwitcher'
-
-export const runtime = 'edge';
-export const dynamic = 'force-dynamic';
-
-export default async function VideoPage({ 
-  params 
-}: { 
-  params: Promise<{ lang: 'ja' | 'en', id: string }> 
-}) {
-  const { lang, id: videoId } = await params
-  const dict = await getDictionary(lang)
-
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect(`/${lang}/login`)
-
-  const { data: subscription } = await supabase
-    .from('subscriptions').select('*').eq('user_id', user.id).eq('status', 'active').single()
-
-  if (!subscription) {
-    return (
-      <div className="min-h-screen p-8 bg-gray-50 flex flex-col items-center justify-center relative">
-        <div className="absolute top-6 right-6"><LanguageSwitcher currentLang={lang} /></div>
-        <p className="text-lg text-gray-800 mb-4">{dict.video.requireSubscription}</p>
-        <Link href={`/${lang}/pricing`} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
-          {dict.video.toPricing}
-        </Link>
-      </div>
-    )
-  }
-
-  const limit = 25;
-  const { count } = await supabase
-    .from('viewing_history').select('*', { count: 'exact', head: true })
-    .eq('user_id', user.id)
-    .gte('viewed_at', subscription.current_period_start) // 年間の開始日
-    .lte('viewed_at', subscription.current_period_end);
-
-  const currentCount = count || 0;
-
-  const { data: credits } = await supabase
-    .from('video_credits')
-    .select('remaining')
-    .eq('user_id', user.id)
-    .gt('remaining', 0)
-    .gt('expires_at', new Date().toISOString());
-
-  const totalTickets = credits?.reduce((acc, curr) => acc + curr.remaining, 0) || 0;
-  const hasTickets = (credits && credits.length > 0);
-
-  const { data: alreadyViewed } = await supabase
-    .from('viewing_history').select('id').eq('user_id', user.id).eq('vimeo_video_id', videoId)
-    .gte('viewed_at', subscription.current_period_start).maybeSingle()
-
-  if (!alreadyViewed && currentCount >= limit && !hasTickets) {
-    return (
-      <div className="min-h-screen p-8 bg-gray-50 flex flex-col items-center justify-center text-center">
-        <div className="max-w-md w-full bg-white p-10 rounded-2xl shadow-xl border border-gray-100">
-          <div className="text-5xl mb-6">🚫</div>
-          <h2 className="text-2xl font-black text-slate-900 mb-4">
-            {dict.video.limitReachedTitle.replace('{limit}', limit.toString())}
-          </h2>
-          
-          <p className="text-slate-600 mb-8 leading-relaxed">
-            {dict.video.limitMessage}
-          </p>
-
-          <div className="space-y-4">
-            <form action="/api/portal" method="POST">
-              <input type="hidden" name="lang" value={lang} />
-              <button 
-                type="submit" 
-                className="block w-full py-4 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
-              >
-                {dict.video.toPricing}
-              </button>
-            </form>
-
-            {/* その場で追加チケットを購入するフォーム */}
-            <form action="/api/checkout" method="POST">
-              <input type="hidden" name="lang" value={lang} />
-              <input type="hidden" name="priceId" value={process.env.STRIPE_PRICE_ID_ADDON} />
-              <button 
-                type="submit" 
-                className="w-full py-4 bg-amber-500 text-white font-bold rounded-xl hover:bg-amber-600 transition-all shadow-lg shadow-amber-100"
-              >
-                🎟️ {dict.dashboard.buyTickets}
-              </button>
-            </form>
-
-            <Link 
-              href={`/${lang}/dashboard`} 
-              className="block w-full py-2 text-slate-400 font-medium hover:text-slate-600 transition-colors text-sm"
-            >
-              {dict.video.backToDashboard}
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const { data: favorite } = await supabase
-    .from('favorites').select('id').eq('user_id', user.id).eq('vimeo_video_id', videoId).maybeSingle()
-
-  return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-8">
-      <div className="max-w-4xl mx-auto mt-8 md:mt-0">
-        
-        {/* ヘッダー部分 */}
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
-          <div className="flex items-center gap-4">
-            <h1 className="text-2xl font-bold text-gray-800">{dict.video.playerTitle}</h1>
-            <FavoriteButton 
-              videoId={videoId} 
-              initialIsFavorited={!!favorite} 
-              textAdd={dict.video.favoriteAdd}
-              textRemove={dict.video.favoriteRemove}
-            />
-          </div>
-          <div className="flex items-center">
-            {/* 言語切り替えボタンと戻るボタンを横並びに配置 */}
-            <LanguageSwitcher currentLang={lang} />
-            <Link href={`/${lang}/dashboard`} className="text-sm text-blue-600 hover:underline border border-blue-200 px-3 py-1.5 rounded-md bg-white text-center">
-              {dict.video.backToDashboard}
-            </Link>
-          </div>
-        </div>
-        
-        <VideoPlayer 
-          videoId={videoId} 
-          alreadyViewed={!!alreadyViewed} 
-          textCompleted={dict.video.watchCompleted}
-        />
-
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 grid grid-cols-1 sm:grid-cols-3 gap-6 items-center">
-          <div>
-            <p className="text-sm text-gray-500 mb-1">{dict.video.currentPlan}</p>
-            <p className="text-lg font-semibold text-blue-900 capitalize">{subscription.plan_type}</p>
-          </div>
-          <div className="text-center border-t sm:border-t-0 sm:border-x border-gray-100 py-4 sm:py-0">
-            <p className="text-sm text-gray-500 mb-1">{dict.video.yearlyWatchCount}</p>
-            <p className="text-lg font-semibold text-gray-800">
-              {currentCount} <span className="text-sm font-normal text-gray-500">/ {limit}{dict.video.videosUnit}</span>
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-sm text-amber-600 font-bold mb-1">🎟️ {dict.dashboard.remainingTickets.split('：')[0]}</p>
-            <p className="text-lg font-bold text-amber-700">
-              {totalTickets} <span className="text-sm font-normal text-gray-500">{dict.video.videosUnit}</span>
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <footer className="mt-20 py-8 border-t border-gray-100">
-      <div className="flex flex-col md:flex-row justify-center items-center gap-6 text-[11px] text-gray-400">
-        <Link href={`/${lang}/terms`} className="hover:text-blue-600 transition-colors">Terms of Service</Link>
-        <Link href={`/${lang}/privacy`} className="hover:text-blue-600 transition-colors">Privacy Policy</Link>
-        <Link href={`/${lang}/legal`} className="hover:text-blue-600 transition-colors">Legal Notice</Link>
-        <span>© {new Date().getFullYear()} Nihongo Learning</span>
-      </div>
-    </footer>
-    </div>
-  )
-}
-</file>
-
 <file path="app/api/checkout/route.ts">
 import { NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
@@ -2173,6 +2008,182 @@ export default async function HomePage({ params }: { params: Promise<{ lang: 'ja
 }
 </file>
 
+<file path="app/[lang]/video/[id]/page.tsx">
+import { createClient } from '@/utils/supabase/server'
+import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import VideoPlayer from './VideoPlayer'
+import FavoriteButton from './FavoriteButton'
+import { getDictionary } from '@/utils/get-dictionary'
+import LanguageSwitcher from '@/app/components/LanguageSwitcher'
+
+export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
+
+export default async function VideoPage({ 
+  params 
+}: { 
+  params: Promise<{ lang: 'ja' | 'en', id: string }> 
+}) {
+  const { lang, id: videoId } = await params
+  const dict = await getDictionary(lang)
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect(`/${lang}/login`)
+
+  const { data: subscription } = await supabase
+    .from('subscriptions').select('*').eq('user_id', user.id).eq('status', 'active').single()
+
+  if (!subscription) {
+    return (
+      <div className="min-h-screen p-8 bg-gray-50 flex flex-col items-center justify-center relative">
+        <div className="absolute top-6 right-6"><LanguageSwitcher currentLang={lang} /></div>
+        <p className="text-lg text-gray-800 mb-4">{dict.video.requireSubscription}</p>
+        <Link href={`/${lang}/pricing`} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+          {dict.video.toPricing}
+        </Link>
+      </div>
+    )
+  }
+
+  const limit = 25;
+  const { count } = await supabase
+    .from('viewing_history').select('*', { count: 'exact', head: true })
+    .eq('user_id', user.id)
+    .gte('viewed_at', subscription.current_period_start) // 年間の開始日
+    .lte('viewed_at', subscription.current_period_end);
+
+  const currentCount = count || 0;
+
+  const { data: credits } = await supabase
+    .from('video_credits')
+    .select('remaining')
+    .eq('user_id', user.id)
+    .gt('remaining', 0)
+    .gt('expires_at', new Date().toISOString());
+
+  const totalTickets = credits?.reduce((acc, curr) => acc + curr.remaining, 0) || 0;
+  const hasTickets = (credits && credits.length > 0);
+
+  const { data: alreadyViewed } = await supabase
+    .from('viewing_history').select('id').eq('user_id', user.id).eq('vimeo_video_id', videoId)
+    .gte('viewed_at', subscription.current_period_start).maybeSingle()
+
+  if (!alreadyViewed && currentCount >= limit && !hasTickets) {
+    return (
+      <div className="min-h-screen p-8 bg-gray-50 flex flex-col items-center justify-center text-center">
+        <div className="max-w-md w-full bg-white p-10 rounded-2xl shadow-xl border border-gray-100">
+          <div className="text-5xl mb-6">🚫</div>
+          <h2 className="text-2xl font-black text-slate-900 mb-4">
+            {dict.video.limitReachedTitle.replace('{limit}', limit.toString())}
+          </h2>
+          
+          <p className="text-slate-600 mb-8 leading-relaxed">
+            {dict.video.limitMessage}
+          </p>
+
+          <div className="space-y-4">
+            <form action="/api/portal" method="POST">
+              <input type="hidden" name="lang" value={lang} />
+              <button 
+                type="submit" 
+                className="block w-full py-4 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
+              >
+                {dict.video.toPricing}
+              </button>
+            </form>
+
+            {/* その場で追加チケットを購入するフォーム */}
+            <form action="/api/checkout" method="POST">
+              <input type="hidden" name="lang" value={lang} />
+              <input type="hidden" name="priceId" value={process.env.STRIPE_PRICE_ID_ADDON} />
+              <button 
+                type="submit" 
+                className="w-full py-4 bg-amber-500 text-white font-bold rounded-xl hover:bg-amber-600 transition-all shadow-lg shadow-amber-100"
+              >
+                🎟️ {dict.dashboard.buyTickets}
+              </button>
+            </form>
+
+            <Link 
+              href={`/${lang}/dashboard`} 
+              className="block w-full py-2 text-slate-400 font-medium hover:text-slate-600 transition-colors text-sm"
+            >
+              {dict.video.backToDashboard}
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const { data: favorite } = await supabase
+    .from('favorites').select('id').eq('user_id', user.id).eq('vimeo_video_id', videoId).maybeSingle()
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-4 md:p-8">
+      <div className="max-w-4xl mx-auto mt-8 md:mt-0">
+        
+        {/* ヘッダー部分 */}
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
+          <div className="flex items-center gap-4">
+            <h1 className="text-2xl font-bold text-gray-800">{dict.video.playerTitle}</h1>
+            <FavoriteButton 
+              videoId={videoId} 
+              initialIsFavorited={!!favorite} 
+              textAdd={dict.video.favoriteAdd}
+              textRemove={dict.video.favoriteRemove}
+            />
+          </div>
+          <div className="flex items-center">
+            {/* 言語切り替えボタンと戻るボタンを横並びに配置 */}
+            <LanguageSwitcher currentLang={lang} />
+            <Link href={`/${lang}/dashboard`} className="text-sm text-blue-600 hover:underline border border-blue-200 px-3 py-1.5 rounded-md bg-white text-center">
+              {dict.video.backToDashboard}
+            </Link>
+          </div>
+        </div>
+        
+        <VideoPlayer 
+          videoId={videoId} 
+          alreadyViewed={!!alreadyViewed} 
+          textCompleted={dict.video.watchCompleted}
+        />
+
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 grid grid-cols-1 sm:grid-cols-3 gap-6 items-center">
+          <div>
+            <p className="text-sm text-gray-500 mb-1">{dict.video.currentPlan}</p>
+            <p className="text-lg font-semibold text-blue-900 capitalize">{subscription.plan_type}</p>
+          </div>
+          <div className="text-center border-t sm:border-t-0 sm:border-x border-gray-100 py-4 sm:py-0">
+            <p className="text-sm text-gray-500 mb-1">{dict.video.yearlyWatchCount}</p>
+            <p className="text-lg font-semibold text-gray-800">
+              {currentCount} <span className="text-sm font-normal text-gray-500">/ {limit}{dict.video.videosUnit}</span>
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-sm text-amber-600 font-bold mb-1">🎟️ {dict.dashboard.remainingTickets.split('：')[0]}</p>
+            <p className="text-lg font-bold text-amber-700">
+              {totalTickets} <span className="text-sm font-normal text-gray-500">{dict.video.videosUnit}</span>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <footer className="mt-20 py-8 border-t border-gray-100">
+      <div className="flex flex-col md:flex-row justify-center items-center gap-6 text-[11px] text-gray-400">
+        <Link href={`/${lang}/terms`} className="hover:text-blue-600 transition-colors">Terms of Service</Link>
+        <Link href={`/${lang}/privacy`} className="hover:text-blue-600 transition-colors">Privacy Policy</Link>
+        <Link href={`/${lang}/legal`} className="hover:text-blue-600 transition-colors">Legal Notice</Link>
+        <span>© {new Date().getFullYear()} Nihongo Learning</span>
+      </div>
+    </footer>
+    </div>
+  )
+}
+</file>
+
 <file path="dictionaries/en.json">
 {
   "metadata": {
@@ -2197,7 +2208,7 @@ export default async function HomePage({ params }: { params: Promise<{ lang: 'ja
     "feature3Title": "Flexible Pricing Plans",
     "feature3Desc": "We offer 3 plans to suit your learning pace, from a Light plan to an unlimited Premium plan.",
     "pricingTitle": "Simple Pricing",
-    "pricingDesc": "Registration is free. Create an account first, then choose the plan that suits you.",
+    "pricingDesc": "Registration is free. Create an account first.",
     "planLight": "Light",
     "planStandard": "Standard",
     "planPremium": "Premium",
@@ -2205,7 +2216,7 @@ export default async function HomePage({ params }: { params: Promise<{ lang: 'ja
     "mostPopular": "Most Popular",
     "standardFeature1": "Watch up to 25 videos per month",
     "featureProgress": "Progress tracking",
-    "featureAllAccess": "Access to all sections",
+    "featureAllAccess": "Access to 25 videos per month",
     "ctaTitle": "Let's open the door to a new language.",
     "ctaDesc": "Account creation takes only 1 minute.",
     "createFreeAccount": "Create a Free Account",
@@ -2331,14 +2342,14 @@ export default async function HomePage({ params }: { params: Promise<{ lang: 'ja
     "feature3Title": "選べる柔軟な料金プラン",
     "feature3Desc": "あなたの学習ペースに合わせて、ライトから無制限のプレミアムまで、3つのプランをご用意しています。",
     "pricingTitle": "シンプルな料金体系",
-    "pricingDesc": "登録は無料です。まずはアカウントを作成し、あなたに合ったプランをお選びください。",
+    "pricingDesc": "登録は無料です。まずはアカウントを作成しましょう。",
     "planLight": "ライト",
     "planStandard": "スタンダード",
     "planPremium": "プレミアム",
     "perMonth": " / 月",
     "mostPopular": "一番人気",
     "featureProgress": "進捗管理機能",
-    "featureAllAccess": "全セクションへのアクセス",
+    "featureAllAccess": "月25本の視聴が可能",
     "ctaTitle": "さあ、新しい言語の扉を開きましょう。",
     "ctaDesc": "アカウント作成はわずか1分で完了します。",
     "createFreeAccount": "無料でアカウントを作成する",
@@ -2438,88 +2449,6 @@ export default async function HomePage({ params }: { params: Promise<{ lang: 'ja
     "selectPlan": "プランを選択",
     "alreadySubscribedError": "すでにプランを契約中のため、追加購入はできません"
   }
-}
-</file>
-
-<file path="app/[lang]/pricing/page.tsx">
-import { createClient } from '@/utils/supabase/server'
-import { redirect } from 'next/navigation'
-import { getDictionary } from '@/utils/get-dictionary'
-import LanguageSwitcher from '@/app/components/LanguageSwitcher'
-
-export const runtime = 'edge';
-
-export default async function PricingPage({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }) {
-  const { lang } = await params
-  const dict = await getDictionary(lang)
-
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect(`/${lang}/login`)
-  }
-
-  const { data: existingSubscription } = await supabase
-    .from('subscriptions').select('*').eq('user_id', user.id).eq('status', 'active').limit(1).maybeSingle()
-
-  const getPriceId = (plan: 'light' | 'standard' | 'premium', currentLang: string) => {
-    if (plan === 'light') return process.env.STRIPE_PRICE_ID_LIGHT;
-    if (plan === 'standard') return process.env.STRIPE_PRICE_ID_STANDARD;
-    if (plan === 'premium') return process.env.STRIPE_PRICE_ID_PREMIUM;
-  }
-
-  const isSubscribed = !!existingSubscription
-
-  return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8 relative">
-      <div className="absolute top-6 right-6">
-        <LanguageSwitcher currentLang={lang} />
-      </div>
-
-      <div className="max-w-7xl mx-auto mt-8">
-        <div className="text-center">
-          <h2 className="text-3xl font-extrabold text-gray-900 sm:text-4xl">{dict.pricing.title}</h2>
-          <p className="mt-4 text-xl text-gray-600">{dict.pricing.subtitle}</p>
-        </div>
-
-        {isSubscribed && (
-          <div className="mt-8 max-w-3xl mx-auto bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 rounded shadow-sm">
-            <p className="font-bold">{dict.pricing.noticeTitle}</p>
-            <p>{dict.pricing.noticeMessage}</p>
-          </div>
-        )}
-
-        <div className="mt-12 max-w-md mx-auto">
-          
-          {/* 基本プラン（旧スタンダードプラン）のみを残す */}
-          <div className="border border-blue-500 rounded-lg shadow-md divide-y divide-gray-200 bg-white relative">
-            <div className="p-8 text-center">
-              <h3 className="text-xl leading-6 font-bold text-gray-900">{dict.pricing.planStandard}</h3>
-              <p className="mt-8">
-                <span className="text-5xl font-extrabold text-gray-900">{dict.pricing.priceStandard}</span>
-                <span className="text-lg font-medium text-gray-500">{dict.pricing.perMonth}</span>
-              </p>
-              <form action="/api/checkout" method="POST" className="mt-8">
-                <input type="hidden" name="lang" value={lang} />
-                <input type="hidden" name="priceId" value={process.env.STRIPE_PRICE_ID_STANDARD || ''} />
-                <button 
-                  type="submit" 
-                  disabled={isSubscribed}
-                  className={`w-full text-white rounded-md py-3 text-base font-bold transition-colors ${
-                    isSubscribed ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 shadow-md hover:shadow-lg'
-                  }`}
-                >
-                  {isSubscribed ? dict.pricing.subscribed : dict.pricing.selectPlan}
-                </button>
-              </form>
-            </div>
-          </div>
-
-        </div>
-      </div>
-    </div>
-  )
 }
 </file>
 
@@ -2648,6 +2577,98 @@ export default async function LoginPage({
           </Link>
         </div>
       </form>
+    </div>
+  )
+}
+</file>
+
+<file path="app/[lang]/pricing/page.tsx">
+import { createClient } from '@/utils/supabase/server'
+import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import { getDictionary } from '@/utils/get-dictionary'
+import LanguageSwitcher from '@/app/components/LanguageSwitcher'
+
+export const runtime = 'edge';
+
+export default async function PricingPage({ params }: { params: Promise<{ lang: 'ja' | 'en' }> }) {
+  const { lang } = await params
+  const dict = await getDictionary(lang)
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    redirect(`/${lang}/login`)
+  }
+
+  const { data: existingSubscription } = await supabase
+    .from('subscriptions').select('*').eq('user_id', user.id).eq('status', 'active').limit(1).maybeSingle()
+
+  const getPriceId = (plan: 'light' | 'standard' | 'premium', currentLang: string) => {
+    if (plan === 'light') return process.env.STRIPE_PRICE_ID_LIGHT;
+    if (plan === 'standard') return process.env.STRIPE_PRICE_ID_STANDARD;
+    if (plan === 'premium') return process.env.STRIPE_PRICE_ID_PREMIUM;
+  }
+
+  const isSubscribed = !!existingSubscription
+
+  return (
+    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8 relative">
+      <div className="absolute top-6 right-6">
+        <LanguageSwitcher currentLang={lang} />
+      </div>
+
+      <div className="max-w-7xl mx-auto mt-8">
+        <div className="text-center">
+          <h2 className="text-3xl font-extrabold text-gray-900 sm:text-4xl">{dict.pricing.title}</h2>
+          <p className="mt-4 text-xl text-gray-600">{dict.pricing.subtitle}</p>
+        </div>
+
+        {isSubscribed && (
+          <div className="mt-8 max-w-3xl mx-auto bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 rounded shadow-sm">
+            <p className="font-bold">{dict.pricing.noticeTitle}</p>
+            <p>{dict.pricing.noticeMessage}</p>
+          </div>
+        )}
+
+        <div className="mt-12 max-w-md mx-auto">
+          
+          {/* 基本プラン（旧スタンダードプラン）のみを残す */}
+          <div className="border border-blue-500 rounded-lg shadow-md divide-y divide-gray-200 bg-white relative">
+            <div className="p-8 text-center">
+              <h3 className="text-xl leading-6 font-bold text-gray-900">{dict.pricing.planStandard}</h3>
+              <p className="mt-8">
+                <span className="text-5xl font-extrabold text-gray-900">{dict.pricing.priceStandard}</span>
+                <span className="text-lg font-medium text-gray-500">{dict.pricing.perMonth}</span>
+              </p>
+              <form action="/api/checkout" method="POST" className="mt-8">
+                <input type="hidden" name="lang" value={lang} />
+                <input type="hidden" name="priceId" value={process.env.STRIPE_PRICE_ID_STANDARD || ''} />
+                <button 
+                  type="submit" 
+                  disabled={isSubscribed}
+                  className={`w-full text-white rounded-md py-3 text-base font-bold transition-colors ${
+                    isSubscribed ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 shadow-md hover:shadow-lg'
+                  }`}
+                >
+                  {isSubscribed ? dict.pricing.subscribed : dict.pricing.selectPlan}
+                </button>
+              </form>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <footer className="mt-16 py-8 border-t border-gray-200">
+        <div className="flex flex-col md:flex-row justify-center items-center gap-6 text-[11px] text-gray-400">
+          <Link href={`/${lang}/terms`} className="hover:text-blue-600 transition-colors">Terms of Service</Link>
+          <Link href={`/${lang}/privacy`} className="hover:text-blue-600 transition-colors">Privacy Policy</Link>
+          <Link href={`/${lang}/legal`} className="hover:text-blue-600 transition-colors">Legal Notice</Link>
+          <span>© {new Date().getFullYear()} Nihongo Learning</span>
+        </div>
+      </footer>
     </div>
   )
 }

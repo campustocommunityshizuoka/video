@@ -36,7 +36,7 @@ export async function middleware(request: NextRequest) {
     // データベースから最新のセッションIDを取得
     const { data: sub } = await supabase
       .from('subscriptions')
-      .select(' current_session_id')
+      .select('current_session_id')
       .eq('user_id', session.user.id)
       .maybeSingle();
 

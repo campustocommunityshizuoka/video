@@ -79,7 +79,6 @@ export default async function SectionPage({
         </div>
       </div>
 
-      // ページの一番下に追加
       <footer className="mt-16 py-8 border-t border-gray-200">
         <div className="flex flex-col md:flex-row justify-center items-center gap-6 text-[11px] text-gray-400">
           <Link href={`/${lang}/terms`} className="hover:text-blue-600 transition-colors">Terms of Service</Link>

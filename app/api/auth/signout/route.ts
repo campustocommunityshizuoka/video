@@ -10,5 +10,9 @@ export async function POST(request: Request) {
   const supabaseClient = await createClient()
   await supabaseClient.auth.signOut()
 
-  return NextResponse.redirect(new URL(`/${currentLang}/login`, request.url), 303)
+  const response = NextResponse.redirect(new URL(`/${currentLang}/login`, request.url), 303)
+  
+  response.cookies.delete('device_session_id')
+
+  return response
 }

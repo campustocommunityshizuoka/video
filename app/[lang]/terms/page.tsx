@@ -24,8 +24,8 @@ export default async function TermsPage({ params }: { params: Promise<{ lang: 'j
 
           <section>
             <h3 className="text-xl font-bold text-gray-900 mb-3">2. Subscription and Tickets / サブスクリプションとチケット</h3>
-            <p>The Service is provided on a subscription basis ($35.00/month for up to 25 video views). Additional video views can be purchased via Tickets ($35.00 for 25 views). Unused base capacity resets at the end of each billing cycle. Purchased tickets do not expire as long as the account is active, up to a maximum holding limit of 100 tickets.</p>
-            <p className="text-sm text-gray-500 mt-2">本サービスは月額制（月額35ドル/月間25本まで視聴可能）で提供されます。追加の視聴枠はチケット（35ドル/25本）にて購入可能です。月額プランの未使用の視聴枠は翌月に繰り越されません。購入したチケットはアカウントが有効な限り無期限で利用可能ですが、最大100本分までしかストックできません。</p>
+            <p>The Service is provided on a subscription basis ($35.00/month for up to 25 video views). Additional video views can be purchased via Tickets ($35.00 for 25 views). Unused base capacity resets at the end of each billing cycle. Purchased tickets are valid for 30 days from the date of purchase.</p>
+            <p className="text-sm text-gray-500 mt-2">本サービスは月額制（月額35ドル/月間25本まで視聴可能）で提供されます。追加の視聴枠はチケット（35ドル/25本）にて購入可能です。月額プランの未使用の視聴枠は翌月に繰り越されません。購入した追加チケットの有効期限は、購入日から30日間です。</p>
           </section>
 
           <section>

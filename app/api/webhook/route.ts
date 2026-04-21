@@ -50,7 +50,7 @@ export async function POST(req: Request) {
       const userId = session.metadata.userId;
       if (userId) {
         const expiresAt = new Date();
-        expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+        expiresAt.setDate(expiresAt.getDate() + 30);
 
         // INSERT実行
         const { data, error } = await supabaseAdmin.from('video_credits').insert({
