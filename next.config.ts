@@ -10,7 +10,7 @@ const cspHeader = `
   font-src 'self';
   object-src 'none';
   base-uri 'self';
-  form-action 'self';
+  form-action 'self' https://checkout.stripe.com https://billing.stripe.com;
   frame-ancestors 'none';
   frame-src 'self' https://player.vimeo.com https://js.stripe.com https://hooks.stripe.com;
   connect-src 'self' https://*.supabase.co https://api.stripe.com;
