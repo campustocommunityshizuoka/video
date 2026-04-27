@@ -18,27 +18,27 @@ export default async function LegalPage({ params }: { params: Promise<{ lang: 'j
         <div className="space-y-6 text-gray-700 leading-relaxed">
           <div>
             <h3 className="font-bold text-gray-900">Distributor / 販売事業者名</h3>
-            <p className="mt-1">[Your Company Name or Your Full Name / 法人名または個人事業主の氏名]</p>
+            <p className="mt-1">[株式会社皆昇企画 / 株式会社皆昇企画]</p>
           </div>
 
           <div>
             <h3 className="font-bold text-gray-900">Representative / 運営統括責任者</h3>
-            <p className="mt-1">[Your Name / 代表者氏名]</p>
+            <p className="mt-1">[Takaaki Higashi / 東敬晃]</p>
           </div>
 
           <div>
             <h3 className="font-bold text-gray-900">Address / 所在地</h3>
-            <p className="mt-1">[Your Full Address, City, State, Zip, Country / 郵便番号、都道府県、市区町村、番地、建物名]</p>
+            <p className="mt-1">[Room 102, Life in Escort,5 Maeshibacho Higashitsutsumi, Toyohashi, Aichi, 4410152, Japan / 4410152、愛知県豊橋市前芝町東堤5番地ライフインエスコート102号室]</p>
           </div>
 
           <div>
             <h3 className="font-bold text-gray-900">Phone Number / 電話番号</h3>
-            <p className="mt-1">[Your Phone Number with Country Code (e.g., +81-90-XXXX-XXXX) / 電話番号]</p>
+            <p className="mt-1">[+81-90-7918-7828 / 090-7918-7828]</p>
           </div>
 
           <div>
             <h3 className="font-bold text-gray-900">Email Address / メールアドレス</h3>
-            <p className="mt-1">[support@yourdomain.com / サポート用メールアドレス]</p>
+            <p className="mt-1">[rise@kisyou.world]</p>
           </div>
 
           <div>
