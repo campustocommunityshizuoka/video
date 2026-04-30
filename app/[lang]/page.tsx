@@ -13,29 +13,36 @@ export default async function HomePage({ params }: { params: Promise<{ lang: 'ja
       
       {/* ナビゲーションバー */}
       <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-2">
+          
+          {/* ロゴとタイトルエリア：タイトルに truncate（三点リーダー）を設定 */}
+          <div className="flex items-center gap-2 min-w-0 shrink">
+            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shrink-0">
               <span className="text-white font-bold text-xl leading-none">あ</span>
             </div>
-            <span className="text-xl font-bold tracking-tight text-gray-800">{dict.home.title}</span>
+            <span className="text-base sm:text-lg md:text-xl font-bold tracking-tight text-gray-800 truncate">
+              {dict.home.title}
+            </span>
           </div>
-          <nav className="flex items-center">
+          
+          {/* ナビゲーションエリア：スマホでは要素を詰め、文字を小さく */}
+          <nav className="flex items-center gap-1.5 sm:gap-4 shrink-0">
             <LanguageSwitcher currentLang={lang} />
+            
             <Link 
               href={`/${lang}/login`} 
-              className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors mr-6"
+              className="text-[10px] sm:text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors px-1"
             >
               {dict.home.login}
             </Link>
+            
             <Link 
               href={`/${lang}/login`} 
-              className="text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md transition-colors shadow-sm"
+              className="text-[10px] sm:text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-md transition-colors shadow-sm whitespace-nowrap"
             >
               {dict.home.startFree}
             </Link>
           </nav>
-
         </div>
       </header>
 
