@@ -143,38 +143,63 @@ export default async function DashboardPage({ params }: { params: Promise<{ lang
           <div className="bg-linear-to-r from-blue-50 border-l-4 border-blue-500 rounded-r-md p-6">
             <h2 className="text-sm font-bold text-blue-800 mb-2 tracking-wider">{dict.dashboard.subscriptionStatus}</h2>
             {subscription ? (
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <p className="text-2xl font-extrabold text-blue-900 mb-1">{dict.dashboard.planStandard}</p>
-                  <p className="text-sm text-blue-700">
-                    {dict.dashboard.renewalDate}{new Date(subscription.current_period_end).toLocaleDateString(lang === 'ja' ? 'ja-JP' : 'en-US')}
-                  </p>
-                </div>
-
-                {/* ★進捗インジケーターボックス */}
-                  <div className="bg-white/80 px-5 py-3 rounded-xl border border-blue-100 shadow-sm min-w-50">
-                    <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest mb-1">Monthly Usage</p>
-                    <div className="flex items-baseline gap-1.5">
-                      <span className="text-3xl font-black text-gray-900">{watchedCount}</span>
-                      <span className="text-sm font-bold text-gray-400">/ {totalCapacity}</span>
-                      <span className="text-xs font-bold text-gray-500 ml-1">本</span>
-                      </div>
-                      <div className="w-full bg-gray-200 h-2 rounded-full mt-2 overflow-hidden">
-                        <div 
-                          className="bg-blue-600 h-full transition-all duration-500" 
-                          style={{ width: `${Math.min((watchedCount / totalCapacity) * 100, 100)}%` }}
-                        ></div>
-                      </div>
+              <>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <p className="text-2xl font-extrabold text-blue-900 mb-1">{dict.dashboard.planStandard}</p>
+                    <p className="text-sm text-blue-700">
+                      {dict.dashboard.renewalDate}{new Date(subscription.current_period_end).toLocaleDateString(lang === 'ja' ? 'ja-JP' : 'en-US')}
+                    </p>
                   </div>
 
-                {/* 修正後 */}
-                <form action="/api/portal" method="POST">
-                  <input type="hidden" name="lang" value={lang} />
-                   <button type="submit" className="text-sm bg-white border border-blue-200 text-blue-700 px-5 py-2.5 rounded-md hover:bg-blue-50 font-medium shadow-sm">
-                     {dict.dashboard.manageSubscription}
-                   </button>
-                </form>
-              </div>
+                  {/* ★進捗インジケーターボックス */}
+                    <div className="bg-white/80 px-5 py-3 rounded-xl border border-blue-100 shadow-sm min-w-50">
+                      <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest mb-1">Monthly Usage</p>
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-3xl font-black text-gray-900">{watchedCount}</span>
+                        <span className="text-sm font-bold text-gray-400">/ {totalCapacity}</span>
+                        <span className="text-xs font-bold text-gray-500 ml-1">本</span>
+                        </div>
+                        <div className="w-full bg-gray-200 h-2 rounded-full mt-2 overflow-hidden">
+                          <div 
+                            className="bg-blue-600 h-full transition-all duration-500" 
+                            style={{ width: `${Math.min((watchedCount / totalCapacity) * 100, 100)}%` }}
+                          ></div>
+                        </div>
+                    </div>
+
+                  {/* 修正後 */}
+                  <form action="/api/portal" method="POST">
+                    <input type="hidden" name="lang" value={lang} />
+                     <button type="submit" className="text-sm bg-white border border-blue-200 text-blue-700 px-5 py-2.5 rounded-md hover:bg-blue-50 font-medium shadow-sm">
+                       {dict.dashboard.manageSubscription}
+                     </button>
+                  </form>
+                </div>
+
+                <div className="mt-6 pt-6 border-t border-blue-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center text-xl">🎟️</div>
+                    <div>
+                      <p className="text-sm font-bold text-blue-900">
+                        {dict.dashboard.validTickets.replace('{count}', totalTickets.toString())}
+                      </p>
+                      <p className="text-[10px] text-blue-600 font-medium">
+                        {dict.dashboard.ticketStockLimit}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <form action="/api/checkout" method="POST">
+                    <input type="hidden" name="lang" value={lang} />
+                    <input type="hidden" name="priceId" value={process.env.STRIPE_PRICE_ID_ADDON} />
+                    <input type="hidden" name="type" value="addon" /> {/* ★追加購入であることを明示 */}
+                    <button type="submit" className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-extrabold rounded-lg shadow-md transition-all active:scale-95">
+                      {dict.dashboard.buyTickets}
+                    </button>
+                  </form>
+                </div>
+              </>
             ) : (
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <p className="text-blue-800 font-medium">{dict.dashboard.noSubscription}</p>
@@ -183,29 +208,6 @@ export default async function DashboardPage({ params }: { params: Promise<{ lang
                 </Link>
               </div>
             )}
-
-            <div className="mt-6 pt-6 border-t border-blue-100 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center text-xl">🎟️</div>
-                <div>
-                  <p className="text-sm font-bold text-blue-900">
-                    {dict.dashboard.validTickets.replace('{count}', totalTickets.toString())}
-                  </p>
-                  <p className="text-[10px] text-blue-600 font-medium">
-                    {dict.dashboard.ticketStockLimit}
-                  </p>
-                </div>
-              </div>
-              
-              <form action="/api/checkout" method="POST">
-                <input type="hidden" name="lang" value={lang} />
-                <input type="hidden" name="priceId" value={process.env.STRIPE_PRICE_ID_ADDON} />
-                <input type="hidden" name="type" value="addon" /> {/* ★追加購入であることを明示 */}
-                <button type="submit" className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-extrabold rounded-lg shadow-md transition-all active:scale-95">
-                  {dict.dashboard.buyTickets}
-                </button>
-              </form>
-            </div>
           </div>
         </div>
 

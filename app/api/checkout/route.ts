@@ -31,6 +31,13 @@ export async function POST(request: Request) {
       .eq('status', 'active')
       .maybeSingle()
 
+    if (isAddOn && !subscription) {
+      const errorMsg = currentLang === 'ja' 
+        ? '追加チケットの購入には基本プランの契約が必要です。' 
+        : 'An active subscription is required to purchase additional tickets.';
+      return NextResponse.redirect(new URL(`/${currentLang}/dashboard?message=${encodeURIComponent(errorMsg)}`, request.url), 303)
+    }
+
     if (!isAddOn && subscription) {
       const errorMsg = currentLang === 'ja' 
         ? 'すでにプランを契約中のため、新しく契約することはできません。' 
